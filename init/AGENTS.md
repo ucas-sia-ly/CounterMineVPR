@@ -1,0 +1,19 @@
+- CounterMineVPR studies latent hard negatives in visual place recognition.
+- The core hypothesis must be validated before training modifications are implemented.
+- Synthetic/relit images are diagnostic probes only.
+- Synthetic images must never be passed to the VPR optimization loss.
+- Probe images use one canonical 512x512 coordinate system.
+- The initial intervention must be mild relighting only.
+- Do not use night, snow, heavy rain, or strong generative transformations in the first-stage experiments.
+- Local geometric matching, not global cosine gain, is the main counterfactual signal.
+- Shared-condition bias must be estimated using random-pair null statistics.
+- Generation failures must be rejected through a structural fidelity gate.
+- Training modifications must preserve the original SALAD baseline as much as possible.
+- CounterMine pairs must bypass similarity-only mining filters.
+- CounterMine weighting must also be reflected inside the metric-learning loss.
+- Hardware target: one RTX 4090 48GB with 32GB system RAM.
+- Prefer streaming/chunked processing.
+- Never cache full-dataset local features in RAM.
+- third_party repositories are read-only unless a change is absolutely necessary.
+- Every experiment must have a deterministic seed and save its configuration.
+- Do not claim performance improvements without actual logged results.

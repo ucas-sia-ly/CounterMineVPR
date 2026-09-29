@@ -1,0 +1,3 @@
+[submodule "salad"]
+	path = salad
+	url = https://github.com/ucas-sia-ly/salad.git

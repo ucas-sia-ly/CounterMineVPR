@@ -1,1 +1,12 @@
 data/
+cache/
+outputs/
+checkpoints/
+wandb/
+*.pt
+*.pth
+*.ckpt
+__pycache__/
+*.pyc
+.env
+.DS_Store
