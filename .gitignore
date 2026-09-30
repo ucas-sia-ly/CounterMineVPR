@@ -1,6 +1,6 @@
 data/
 cache/
-outputs/
+#outputs/
 checkpoints/
 wandb/
 *.pt
@@ -10,3 +10,5 @@ __pycache__/
 *.pyc
 .env
 .DS_Store
+*.csv
+cache/

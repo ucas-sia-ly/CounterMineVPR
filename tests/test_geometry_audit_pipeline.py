@@ -19,7 +19,9 @@ import numpy as np
 from PIL import Image
 
 from countermine.probe.geometry_audit import (
-    DELTA_METRICS, MANIFEST_COLUMNS, POLICIES, paired_deltas, pilot_gate_pass, sha256, summarize,
+    DELTA_METRICS, LEGACY_DELTA_METRICS, MANIFEST_COLUMNS, POLICIES,
+    compute_original_pixel_metrics, legacy_paired_deltas, paired_deltas, pilot_gate_pass,
+    sha256, summarize,
 )
 from countermine.probe.iclight_adapter import ICLightConfig
 from countermine.probe.local_fidelity import MatchResult, compute_fidelity_metrics
@@ -302,24 +304,42 @@ class GeometryAuditPipelineTest(unittest.TestCase):
             self.assertEqual(int(row["canonical_height"]), expected_height)
             self.assertEqual(int(row["num_matches"]), 64)
             self.assertEqual(float(row["grid_coverage_8px"]), 1.0)
+            self.assertIn("legacy_output_pixel_gate_pass", row)
+            self.assertNotIn("pilot_gate_pass", row)
+            expected_original = 1.875 if row["policy"] == POLICIES[0] else 1.25
+            self.assertEqual(float(row["displacement_original_q95"]), expected_original)
         for row in paired:
-            self.assertEqual(float(row["delta_R4"]), 0.0)
-            self.assertEqual(float(row["delta_R8"]), 0.0)
-            self.assertEqual(float(row["delta_displacement_q95"]), -1.0)
+            self.assertEqual(float(row["delta_R4_original"]), 0.0)
+            self.assertEqual(float(row["delta_R8_original"]), 0.0)
+            self.assertEqual(float(row["delta_displacement_original_q95"]), -.625)
             self.assertEqual(float(row["delta_grid_coverage_8"]), 0.0)
+            self.assertNotIn("delta_R4", row)
         self.assertEqual(summary["count_pairs"], 20)
         self.assertEqual(summary["number_of_sources"], 10)
         self.assertEqual(summary["config"]["seed"], 42)
         self.assertIsNone(summary["config"]["extract_resize"])
         self.assertIsNone(summary["config"]["registration"])
         self.assertEqual(summary["config"]["grid_shape"], [8, 8])
-        for policy, displacement in zip(POLICIES, (2.0, 1.0)):
-            statistics = summary["policies"][policy]["metrics"]["displacement_q95"]
+        self.assertIsNone(summary["config"]["geometry_acceptance_threshold"])
+        self.assertEqual(summary["config"]["original_epsilon_roundoff_relative_tolerance"], 0.0)
+        self.assertEqual(summary["config"]["original_epsilon_roundoff_absolute_tolerance_pixels"], 1e-12)
+        self.assertEqual(summary["config"]["grid_coordinates"], "normalized source keypoints")
+        for policy, displacement in zip(POLICIES, (1.875, 1.25)):
+            statistics = summary["fair_original_pixel_metrics"][policy]["metrics"]["displacement_original_q95"]
             for quantile in ("median", "q05", "q25", "q75", "q95"):
                 self.assertEqual(statistics[quantile], displacement)
             self.assertEqual(statistics["valid_count"], 10)
             self.assertEqual(statistics["missing_count"], 0)
-        self.assertEqual(summary["paired_deltas"]["delta_displacement_q95"]["median"], -1.0)
+        self.assertEqual(summary["paired_original_pixel_deltas"]["delta_displacement_original_q95"]["median"], -.625)
+        legacy = summary["legacy_output_pixel_deltas"]
+        self.assertFalse(legacy["cross_policy_comparable"])
+        self.assertEqual(legacy["metrics"]["delta_displacement_q95"]["median"], -1.0)
+        for name in ("output_pixel_metrics", "legacy_output_pixel_gate"):
+            self.assertFalse(summary[name]["cross_policy_comparable"])
+            self.assertTrue(summary[name]["reason"])
+        for policy, displacement in zip(POLICIES, (2.0, 1.0)):
+            statistics = summary["output_pixel_metrics"]["policies"][policy]["metrics"]["displacement_q95"]
+            self.assertEqual(statistics["median"], displacement)
         self.assertEqual(json.loads((self.fidelity / "geometry_summary.json").read_text()), summary)
         for filename, format_name in (("geometry_compare_10.jpg", "JPEG"),
                                       ("geometry_fidelity_compare.png", "PNG")):
@@ -329,14 +349,16 @@ class GeometryAuditPipelineTest(unittest.TestCase):
                 self.assertGreater(image.height, 100)
                 image.load()
 
-    def test_pilot_gate_is_reported_without_filtering_failed_pairs(self):
+    def test_legacy_output_pixel_gate_is_reported_without_filtering_failed_pairs(self):
         self._generate()
         summary, _ = self._measure(empty_at=1)
         self.assertEqual(len(_read_rows(self.fidelity / "geometry_fidelity.csv")), 20)
         self.assertEqual(len(_read_rows(self.fidelity / "geometry_paired.csv")), 10)
-        self.assertEqual(summary["policies"][POLICIES[0]]["pilot_gate"]["pass_count"], 9)
-        self.assertEqual(summary["policies"][POLICIES[1]]["pilot_gate"]["pass_count"], 10)
-        self.assertEqual(summary["paired_deltas"]["delta_displacement_q95"]["missing_count"], 1)
+        gate = summary["legacy_output_pixel_gate"]
+        self.assertFalse(gate["cross_policy_comparable"])
+        self.assertEqual(gate["policies"][POLICIES[0]]["pass_count"], 9)
+        self.assertEqual(gate["policies"][POLICIES[1]]["pass_count"], 10)
+        self.assertEqual(summary["paired_original_pixel_deltas"]["delta_displacement_original_q95"]["missing_count"], 1)
         self.assertNotIn("NaN", (self.fidelity / "geometry_summary.json").read_text())
         self.assertNotIn("Infinity", (self.fidelity / "geometry_summary.json").read_text())
 
@@ -349,6 +371,12 @@ class GeometryAuditPipelineTest(unittest.TestCase):
                 self.manifest, self.snapshot, self.generated, device="cpu", adapter_factory=factory,
             )
         factory.assert_not_called()
+
+    def test_anisotropic_manifest_is_rejected_before_matcher_construction(self):
+        self._generate()
+        self.rows[0]["scale_y"] += .01
+        self._save_manifest()
+        self._assert_measure_rejected_without_models()
 
     def test_invalid_source_png_is_rejected_before_adapter_construction(self):
         invalid = Path(self.rows[-1]["source_path"])
@@ -488,13 +516,18 @@ class GeometryPairedStatisticsTest(unittest.TestCase):
         for index in range(10):
             for policy in POLICIES:
                 metrics = compute_fidelity_metrics([[32, 24]], [[32, 24]], [1.0], 1, 1)
+                original = compute_original_pixel_metrics([[32, 24]], [[32, 24]], 1, 1,
+                                                          scale_x=1, scale_y=1)
                 record = {"audit_index": index, "row_index": index + 100,
-                          "policy": policy, **metrics}
+                          "policy": policy, **metrics, **original}
                 full = policy == POLICIES[1]
                 record.update(repeatability_min_4px=.3 + (.2 if full else 0),
                               repeatability_min_8px=.5 + (.1 if full else 0),
                               displacement_q95=5.0 - (1.5 if full else 0),
-                              grid_coverage_8px=.625 + (.125 if full else 0))
+                              grid_coverage_8px=.625 + (.125 if full else 0),
+                              repeatability_original_4px=.3 + (.2 if full else 0),
+                              repeatability_original_8px=.5 + (.1 if full else 0),
+                              displacement_original_q95=7.0 - (2.0 if full else 0))
                 records.append(record)
         return records
 
@@ -504,25 +537,34 @@ class GeometryPairedStatisticsTest(unittest.TestCase):
         self.assertEqual(len(paired), 10)
         self.assertEqual([row["audit_index"] for row in paired], list(range(10)))
         for row in paired:
-            self.assertAlmostEqual(row["delta_R4"], .2)
-            self.assertAlmostEqual(row["delta_R8"], .1)
-            self.assertEqual(row["delta_displacement_q95"], -1.5)
+            self.assertAlmostEqual(row["delta_R4_original"], .2)
+            self.assertAlmostEqual(row["delta_R8_original"], .1)
+            self.assertEqual(row["delta_displacement_original_q95"], -2.0)
             self.assertEqual(row["delta_grid_coverage_8"], .125)
         summary = summarize(records, paired)
-        for key, expected in zip(DELTA_METRICS, (.2, .1, -1.5, .125)):
+        for key, expected in zip(DELTA_METRICS, (.2, .1, -2.0, .125)):
             for statistic in ("median", "min", "max"):
-                self.assertAlmostEqual(summary["paired_deltas"][key][statistic], expected)
+                self.assertAlmostEqual(summary["paired_original_pixel_deltas"][key][statistic], expected)
+
+    def test_previous_output_pixel_deltas_are_explicitly_legacy(self):
+        records = self._records()
+        legacy = legacy_paired_deltas(records)
+        self.assertEqual(set(legacy[0]), {"audit_index", "row_index", *LEGACY_DELTA_METRICS})
+        self.assertEqual(legacy[0]["delta_displacement_q95"], -1.5)
+        summary = summarize(records, paired_deltas(records))
+        self.assertFalse(summary["legacy_output_pixel_deltas"]["cross_policy_comparable"])
+        self.assertEqual(summary["legacy_output_pixel_deltas"]["metrics"]["delta_displacement_q95"]["median"], -1.5)
 
     def test_genuinely_undefined_delta_remains_null_and_is_counted(self):
         records = self._records()
-        records[0]["displacement_q95"] = None
+        records[0]["displacement_original_q95"] = None
         paired = paired_deltas(records)
-        self.assertIsNone(paired[0]["delta_displacement_q95"])
+        self.assertIsNone(paired[0]["delta_displacement_original_q95"])
         summary = summarize(records, paired)
-        delta = summary["paired_deltas"]["delta_displacement_q95"]
+        delta = summary["paired_original_pixel_deltas"]["delta_displacement_original_q95"]
         self.assertEqual(delta["valid_count"], 9)
         self.assertEqual(delta["missing_count"], 1)
-        self.assertEqual(delta["median"], -1.5)
+        self.assertEqual(delta["median"], -2.0)
         json.dumps(summary, allow_nan=False)
 
     def test_paired_analysis_rejects_missing_duplicate_and_nonfinite_records(self):
@@ -534,7 +576,7 @@ class GeometryPairedStatisticsTest(unittest.TestCase):
                 elif mutation == "duplicate":
                     records.append(dict(records[0]))
                 else:
-                    records[0]["repeatability_min_8px"] = float("nan")
+                    records[0]["repeatability_original_8px"] = float("nan")
                 with self.assertRaises(ValueError):
                     paired_deltas(records)
 

@@ -2,7 +2,8 @@
 """Explicitly measure source-to-relight fidelity for the paired Step 2D0 audit.
 
 No identity control, cross-place comparison, generation, or training is run.
-The provisional gate is reported without filtering any records.
+Original-image pixels provide the common displacement scale. Historical
+output-pixel metrics and the old gate are retained as legacy diagnostics.
 """
 
 import argparse
@@ -17,9 +18,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
 from countermine.probe.geometry_audit import (  # noqa: E402
-    DELTA_METRICS, PILOT_GATE, POLICIES, load_manifest, paired_deltas, pilot_gate_pass,
+    DELTA_METRICS, ISOTROPIC_SCALE_TOLERANCE, ORIGINAL_METRIC_COLUMNS,
+    ORIGINAL_THRESHOLD_ROUNDOFF_TOLERANCE, POLICIES, compute_original_pixel_metrics,
+    load_manifest, paired_deltas, pilot_gate_pass,
     plot_contact_sheet, plot_fidelity, publish, read_csv, reference, sha256,
-    summarize, validate_destinations, validate_png, write_csv, write_json,
+    summarize, validate_destinations, validate_isotropic_scale, validate_png, write_csv, write_json,
 )
 from countermine.probe.local_fidelity import (  # noqa: E402
     METRIC_COLUMNS, LocalFidelityConfig, LocalFidelityMatcher, compute_fidelity_metrics,
@@ -27,7 +30,10 @@ from countermine.probe.local_fidelity import (  # noqa: E402
 from countermine.probe.iclight_adapter import ICLightConfig  # noqa: E402
 
 
-CSV_COLUMNS = ("audit_index", "row_index", "image_id", "policy", "mode", *METRIC_COLUMNS, "pilot_gate_pass")
+CSV_COLUMNS = (
+    "audit_index", "row_index", "image_id", "policy", "mode", "scale_x", "scale_y",
+    *METRIC_COLUMNS, *ORIGINAL_METRIC_COLUMNS, "legacy_output_pixel_gate_pass",
+)
 PAIRED_COLUMNS = ("audit_index", "row_index", *DELTA_METRICS)
 PLOT_NAMES = ("geometry_compare_10.jpg", "geometry_fidelity_compare.png")
 PROVENANCE_COLUMNS = (
@@ -124,6 +130,8 @@ def run_geometry_fidelity(manifest_path, generation_csv, generation_summary_path
         (manifest_path, generation_csv, generation_summary_path, snapshot_path, output_dir, plot_dir)
     )
     rows = load_manifest(manifest_path, snapshot_path)
+    for row in rows:
+        validate_isotropic_scale(row["scale_x"], row["scale_y"])
     outputs, generation_metadata = load_generated_pairs(
         rows, generation_csv, generation_summary_path, manifest_path, snapshot_path,
     )
@@ -172,13 +180,20 @@ def run_geometry_fidelity(manifest_path, generation_csv, generation_summary_path
                     matches.num_keypoints_source, matches.num_keypoints_relit,
                     canonical_width=row["canonical_width"], canonical_height=row["canonical_height"],
                 )
+                original_metrics = compute_original_pixel_metrics(
+                    matches.points_source, matches.points_relit,
+                    matches.num_keypoints_source, matches.num_keypoints_relit,
+                    scale_x=row["scale_x"], scale_y=row["scale_y"],
+                )
                 record = {key: row[key] for key in ("audit_index", "row_index", "image_id", "policy")}
-                record.update(mode="full_scene", **metrics)
-                record["pilot_gate_pass"] = pilot_gate_pass(record)
+                record.update(mode="full_scene", scale_x=row["scale_x"], scale_y=row["scale_y"],
+                              **metrics, **original_metrics)
+                record["legacy_output_pixel_gate_pass"] = pilot_gate_pass(record)
                 records.append(record)
                 print(f"audit {row['audit_index']} | row {row['row_index']} | {row['policy']} | "
-                      f"matches={metrics['num_matches']} | R8={metrics['repeatability_min_8px']:.6f} | "
-                      f"pilot_gate_pass={record['pilot_gate_pass']}", flush=True)
+                      f"matches={metrics['num_matches']} | "
+                      f"R8(original-image pixels)={original_metrics['repeatability_original_8px']:.6f}",
+                      flush=True)
                 del matches
             finally:
                 del source_features
@@ -193,10 +208,18 @@ def run_geometry_fidelity(manifest_path, generation_csv, generation_summary_path
             "config": {**asdict(config), "mode": "full_scene", "extract_resize": None,
                        "registration": None, "grid_shape": [8, 8],
                        "grid_coordinates": "normalized source keypoints",
-                       "displacement_units": "canonical output pixels", "epsilons_pixels": [2, 4, 8, 16],
+                       "displacement_units": "original-image pixels for fair comparisons",
+                       "epsilons_pixels": [2, 4, 8, 16],
+                       "original_pixel_conversion": "source and relit matched coordinates / scale_x; crop translation cancels",
+                       "isotropic_scale_absolute_tolerance": ISOTROPIC_SCALE_TOLERANCE,
+                       "original_epsilon_comparison": "inclusive <= with float64 roundoff guard",
+                       "original_epsilon_roundoff_absolute_tolerance_pixels": ORIGINAL_THRESHOLD_ROUNDOFF_TOLERANCE,
+                       "original_epsilon_roundoff_relative_tolerance": 0.0,
+                       "historical_displacement_units": "canonical output pixels; not directly comparable across policies",
                        "summary_quantiles": "numpy linear interpolation; equal weight per source",
                        "paired_delta_direction": "full_fov_512 minus square_crop_512",
-                       "pilot_gate": PILOT_GATE, "identity_control": "not rerun; validated historical Step 2C",
+                       "geometry_acceptance_threshold": None,
+                       "identity_control": "not rerun; validated historical Step 2C",
                        "feature_retention": "one source/relit pair; discard before next pair"},
             "matcher": matcher.runtime_metadata(),
             "manifest_reference": reference(manifest_path), "manifest_sha256": sha256(manifest_path),
@@ -234,10 +257,13 @@ def main():
                                         args.snapshot, args.output_dir, args.plot_dir, device=args.device)
     except (OSError, ValueError, KeyError, RuntimeError, ImportError) as error:
         parser.exit(1, f"error: {error}\n")
-    print(f"Measured {summary['count_pairs']} pairs; provisional gate is diagnostic only:")
-    for policy, results in summary["policies"].items():
-        gate = results["pilot_gate"]
-        print(f"{policy}: {gate['pass_count']}/{gate['total_count']} accepted ({gate['acceptance_fraction']:.6f})")
+    print(f"Measured {summary['count_pairs']} pairs in a common original-image pixel scale:")
+    for policy, results in summary["fair_original_pixel_metrics"].items():
+        metrics = results["metrics"]
+        print(f"{policy}: median original-pixel R4={metrics['repeatability_original_4px']['median']}, "
+              f"R8={metrics['repeatability_original_8px']['median']}, "
+              f"displacement q95={metrics['displacement_original_q95']['median']}")
+    print("Historical output-pixel metrics and gate are retained; they are not cross-policy comparable.")
 
 
 if __name__ == "__main__":

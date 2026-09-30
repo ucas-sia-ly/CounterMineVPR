@@ -29,12 +29,34 @@ SUMMARY_METRICS = (
     *(f"precision_matches_{epsilon}px" for epsilon in (2, 4, 8, 16)),
     "displacement_median", "displacement_q95", "grid_coverage_4px", "grid_coverage_8px",
 )
+ORIGINAL_METRIC_COLUMNS = (
+    *(f"repeatability_original_{epsilon}px" for epsilon in (2, 4, 8, 16)),
+    *(f"precision_original_{epsilon}px" for epsilon in (2, 4, 8, 16)),
+    "displacement_original_mean", "displacement_original_median",
+    "displacement_original_q75", "displacement_original_q90",
+    "displacement_original_q95", "displacement_original_max",
+)
+FAIR_SUMMARY_METRICS = (
+    "num_keypoints_source", "num_keypoints_relit", "num_matches", "match_ratio_min",
+    *ORIGINAL_METRIC_COLUMNS, "grid_coverage_4px", "grid_coverage_8px",
+)
 DELTA_METRICS = {
+    "delta_R4_original": "repeatability_original_4px",
+    "delta_R8_original": "repeatability_original_8px",
+    "delta_displacement_original_q95": "displacement_original_q95",
+    "delta_grid_coverage_8": "grid_coverage_8px",
+}
+LEGACY_DELTA_METRICS = {
     "delta_R4": "repeatability_min_4px",
     "delta_R8": "repeatability_min_8px",
     "delta_displacement_q95": "displacement_q95",
     "delta_grid_coverage_8": "grid_coverage_8px",
 }
+OUTPUT_PIXEL_COMPARABILITY_REASON = (
+    "Not directly comparable across geometry policies because canonical scale differs."
+)
+ISOTROPIC_SCALE_TOLERANCE = 1e-12
+ORIGINAL_THRESHOLD_ROUNDOFF_TOLERANCE = 1e-12
 PILOT_GATE = {
     "repeatability_min_8px_min": 0.40,
     "grid_coverage_8px_min": 0.60,
@@ -214,7 +236,88 @@ def write_json(path, value):
                           encoding="utf-8")
 
 
+def validate_isotropic_scale(scale_x, scale_y):
+    """Return the canonical/original scale, rejecting anisotropic transforms."""
+    values = []
+    for value, name in ((scale_x, "scale_x"), (scale_y, "scale_y")):
+        if isinstance(value, (bool, np.bool_)):
+            raise ValueError(f"{name} must be finite and positive")
+        try:
+            value = float(value)
+        except (TypeError, ValueError, OverflowError) as error:
+            raise ValueError(f"{name} must be finite and positive") from error
+        if not math.isfinite(value) or value <= 0:
+            raise ValueError(f"{name} must be finite and positive")
+        values.append(value)
+    if abs(values[0] - values[1]) > ISOTROPIC_SCALE_TOLERANCE:
+        raise ValueError("original-pixel fidelity requires isotropic canonical scaling")
+    return values[0]
+
+
+def compute_original_pixel_metrics(
+    points_source, points_relit, num_keypoints_source, num_keypoints_relit,
+    *, scale_x, scale_y,
+):
+    """Measure the unchanged correspondences in common original-image pixels.
+
+    Both matched point arrays are divided by the same isotropic canonical scale.
+    The center-crop translation cancels in the point difference. No transform is
+    registered, and this function does not recompute normalized grid coverage.
+    Inclusive thresholds use an absolute 1e-12 original-pixel float64 roundoff
+    guard (zero relative tolerance), so equivalent boundary correspondences do
+    not acquire different classifications through scale division cancellation.
+    """
+    scale = validate_isotropic_scale(scale_x, scale_y)
+    points = []
+    for value, name in ((points_source, "points_source"), (points_relit, "points_relit")):
+        array = np.asarray(value, dtype=np.float64)
+        if array.ndim != 2 or array.shape[1] != 2 or not np.isfinite(array).all():
+            raise ValueError(f"{name} must have shape (N, 2) and finite coordinates")
+        points.append(array)
+    source, relit = points
+    if source.shape != relit.shape:
+        raise ValueError("Source and relit matched points must have equal shapes")
+    counts = []
+    for value, name in ((num_keypoints_source, "num_keypoints_source"),
+                        (num_keypoints_relit, "num_keypoints_relit")):
+        if (isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer))
+                or value < 0):
+            raise ValueError(f"{name} must be a nonnegative integer")
+        counts.append(int(value))
+    num_matches = len(source)
+    denominator = min(counts)
+    if num_matches > denominator:
+        raise ValueError("num_matches cannot exceed either keypoint count")
+    with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+        source_original = source / scale
+        relit_original = relit / scale
+        displacement = np.linalg.norm(source_original - relit_original, axis=1)
+    if not (np.isfinite(source_original).all() and np.isfinite(relit_original).all()
+            and np.isfinite(displacement).all()):
+        raise ValueError("original-pixel coordinates and displacements must be finite")
+    result = {}
+    for epsilon in (2, 4, 8, 16):
+        good = int(np.count_nonzero(
+            (displacement <= epsilon) | np.isclose(
+                displacement, epsilon, rtol=0.0, atol=ORIGINAL_THRESHOLD_ROUNDOFF_TOLERANCE,
+            )
+        ))
+        result[f"repeatability_original_{epsilon}px"] = float(good / denominator) if denominator else 0.0
+        result[f"precision_original_{epsilon}px"] = float(good / num_matches) if num_matches else 0.0
+    result.update({
+        "displacement_original_mean": float(displacement.mean()) if num_matches else None,
+        "displacement_original_median": float(np.median(displacement)) if num_matches else None,
+        **{
+            f"displacement_original_q{quantile}": float(np.quantile(displacement, quantile / 100.0))
+            if num_matches else None for quantile in (75, 90, 95)
+        },
+        "displacement_original_max": float(displacement.max()) if num_matches else None,
+    })
+    return {name: result[name] for name in ORIGINAL_METRIC_COLUMNS}
+
+
 def pilot_gate_pass(record):
+    """Historical output-pixel gate; never a cross-policy acceptance criterion."""
     names = ("repeatability_min_8px", "grid_coverage_8px", "displacement_q95")
     values = [record[name] for name in names]
     if any(value is None for value in values):
@@ -225,7 +328,9 @@ def pilot_gate_pass(record):
     return bool(r8 >= 0.40 and coverage >= 0.60 and displacement <= 5.0)
 
 
-def paired_deltas(records):
+def paired_deltas(records, *, metric_map=None):
+    """Compute full-FOV minus square deltas, defaulting to original-pixel metrics."""
+    metric_map = DELTA_METRICS if metric_map is None else metric_map
     grouped = {}
     for record in records:
         key = (record["audit_index"], record["row_index"])
@@ -239,7 +344,7 @@ def paired_deltas(records):
     paired = []
     for (audit_index, row_index), pair in sorted(grouped.items()):
         result = {"audit_index": audit_index, "row_index": row_index}
-        for delta, metric in DELTA_METRICS.items():
+        for delta, metric in metric_map.items():
             square, full = (pair[policy][metric] for policy in POLICIES)
             if any(value is not None and not math.isfinite(value) for value in (square, full)):
                 raise ValueError(f"nonfinite paired metric: {metric}")
@@ -248,12 +353,16 @@ def paired_deltas(records):
     return paired
 
 
-def summarize(records, paired):
+def legacy_paired_deltas(records):
+    return paired_deltas(records, metric_map=LEGACY_DELTA_METRICS)
+
+
+def _summarize_policies(records, metric_names):
     policies = {}
     for policy in POLICIES:
         rows = [row for row in records if row["policy"] == policy]
         metrics = {}
-        for metric in SUMMARY_METRICS:
+        for metric in metric_names:
             values = [row[metric] for row in rows if row[metric] is not None]
             if not np.isfinite(values).all():
                 raise ValueError(f"nonfinite summary metric: {metric}")
@@ -263,19 +372,56 @@ def summarize(records, paired):
                                          ("q75", .75), ("q95", .95))
             }
             metrics[metric].update(valid_count=len(values), missing_count=len(rows) - len(values))
-        passed = sum(pilot_gate_pass(row) for row in rows)
-        policies[policy] = {"count_pairs": len(rows), "metrics": metrics,
-                            "pilot_gate": {"pass_count": passed, "total_count": len(rows),
-                                           "acceptance_fraction": passed / len(rows)}}
+        policies[policy] = {"count_pairs": len(rows), "metrics": metrics}
+    return policies
+
+
+def _summarize_deltas(paired, metric_names):
     deltas = {}
-    for metric in DELTA_METRICS:
+    for metric in metric_names:
         values = [row[metric] for row in paired if row[metric] is not None]
+        if not np.isfinite(values).all():
+            raise ValueError(f"nonfinite paired delta: {metric}")
         deltas[metric] = {
             "median": float(np.median(values)) if values else None,
             "min": min(values) if values else None, "max": max(values) if values else None,
             "valid_count": len(values), "missing_count": len(paired) - len(values),
         }
-    return {"policies": policies, "paired_deltas": deltas}
+    return deltas
+
+
+def summarize(records, paired):
+    """Keep fair comparisons and historical output-pixel diagnostics explicit."""
+    legacy_pairs = legacy_paired_deltas(records)
+    gates = {}
+    for policy in POLICIES:
+        rows = [row for row in records if row["policy"] == policy]
+        passed = sum(pilot_gate_pass(row) for row in rows)
+        gates[policy] = {"pass_count": passed, "total_count": len(rows),
+                         "acceptance_fraction": passed / len(rows)}
+    return {
+        "fair_original_pixel_metrics": _summarize_policies(records, FAIR_SUMMARY_METRICS),
+        "paired_original_pixel_deltas": _summarize_deltas(paired, DELTA_METRICS),
+        "output_pixel_metrics": {
+            "cross_policy_comparable": False, "reason": OUTPUT_PIXEL_COMPARABILITY_REASON,
+            "policies": _summarize_policies(records, SUMMARY_METRICS),
+        },
+        "legacy_output_pixel_deltas": {
+            "cross_policy_comparable": False, "reason": OUTPUT_PIXEL_COMPARABILITY_REASON,
+            "metrics": _summarize_deltas(legacy_pairs, LEGACY_DELTA_METRICS),
+        },
+        "legacy_output_pixel_gate": {
+            "cross_policy_comparable": False, "reason": OUTPUT_PIXEL_COMPARABILITY_REASON,
+            "thresholds": PILOT_GATE.copy(), "policies": gates,
+        },
+        "coverage": {
+            "coordinate_system": "normalized canonical image coordinates",
+            "grid_shape": [8, 8], "role": "spatial-distribution diagnostic only",
+            "definition": "occupied normalized source-side cells / 64",
+            "qualifying_matches": "unchanged canonical-output-pixel tolerances of 4 and 8 pixels",
+            "recomputed_in_original_coordinates": False,
+        },
+    }
 
 
 def plot_contact_sheet(rows, outputs, destination):
@@ -318,8 +464,12 @@ def plot_fidelity(records, destination):
     figure = Figure(figsize=(14, 4.5), constrained_layout=True)
     FigureCanvasAgg(figure)
     axes = figure.subplots(1, 3)
-    for axis, metric, title in zip(axes, ("repeatability_min_4px", "repeatability_min_8px",
-                                        "displacement_q95"), ("R4", "R8", "Displacement q95 (output pixels)")):
+    for axis, metric, title in zip(
+        axes,
+        ("repeatability_original_4px", "repeatability_original_8px", "displacement_original_q95"),
+        ("R4 (4 original-image pixels)", "R8 (8 original-image pixels)",
+         "Displacement q95 (original-image pixels)"),
+    ):
         for policy in POLICIES:
             rows = sorted((row for row in records if row["policy"] == policy),
                           key=lambda row: (row["audit_index"], row["row_index"]))
@@ -331,5 +481,8 @@ def plot_fidelity(records, destination):
         axis.grid(alpha=.25)
         if metric.startswith("repeatability"):
             axis.set_ylim(0, 1)
+            axis.set_ylabel("Repeatability at the original-image pixel tolerance")
+        else:
+            axis.set_ylabel("original-image pixels")
     axes[0].legend(fontsize=8)
     figure.savefig(destination, dpi=150)

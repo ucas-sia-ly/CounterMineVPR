@@ -1,0 +1,1112 @@
+{
+  "provenance": {
+    "git_commit": "b6ed091e7a30af6ae8c28b0cf1ac4853656391fd",
+    "git_commit_scope": "repository HEAD at snapshot export",
+    "frozen_step2c_snapshot_sha256": "355e29f5f28906ea60724f27141c4a537d05b3ccf6798501e91d64ffd688010f",
+    "number_of_sources": 10,
+    "iclight_seed": 12345,
+    "fidelity_seed": 42,
+    "prompt": "soft diffuse overcast daylight, uniform outdoor illumination, natural lighting",
+    "aliked_config": {
+      "detection_threshold": 0.2,
+      "max_num_keypoints": 2048,
+      "model_name": "aliked-n16",
+      "nms_radius": 2
+    },
+    "lightglue_config": {
+      "depth_confidence": -1,
+      "features": "aliked",
+      "filter_threshold": 0.1,
+      "mp": false,
+      "width_confidence": -1,
+      "add_scale_ori": false,
+      "descriptor_dim": 256,
+      "flash": true,
+      "input_dim": 128,
+      "n_layers": 9,
+      "name": "lightglue",
+      "num_heads": 4,
+      "weights": "aliked_lightglue",
+      "compiled": false,
+      "weights_version": "v0.1_arxiv"
+    },
+    "registration": null,
+    "resize": null,
+    "extract_resize": null,
+    "coverage_coordinate_system": "normalized canonical image coordinates",
+    "coverage_role": "spatial-distribution diagnostic only",
+    "coverage_grid_shape": [
+      8,
+      8
+    ],
+    "coverage_qualifying_tolerances": "unchanged canonical-output-pixel displacement masks at 4 and 8 pixels",
+    "paired_delta_direction": "full_fov_512 minus square_crop_512"
+  },
+  "geometry": {
+    "square_crop_512": {
+      "canonical_width": 512,
+      "canonical_height": 512,
+      "retained_area_fraction": 0.75,
+      "retained_long_axis_fraction": 0.75,
+      "scale_x": 1.0666666666666667,
+      "scale_y": 1.0666666666666667
+    },
+    "full_fov_512": {
+      "canonical_width": 512,
+      "canonical_height": 384,
+      "retained_area_fraction": 1.0,
+      "retained_long_axis_fraction": 1.0,
+      "scale_x": 0.8,
+      "scale_y": 0.8
+    }
+  },
+  "fair_original_pixel_metrics": {
+    "square_crop_512": {
+      "count_pairs": 10,
+      "metrics": {
+        "num_matches": {
+          "median": 575.5,
+          "q05": 370.65,
+          "q25": 522.25,
+          "q75": 692.5,
+          "q95": 735.8,
+          "valid_count": 10,
+          "missing_count": 0
+        },
+        "match_ratio_min": {
+          "median": 0.5676293244570556,
+          "q05": 0.4768354580394638,
+          "q25": 0.5389341891975401,
+          "q75": 0.5825991899107061,
+          "q95": 0.6018915271475512,
+          "valid_count": 10,
+          "missing_count": 0
+        },
+        "repeatability_original_2px": {
+          "median": 0.425912501150695,
+          "q05": 0.31142569652596086,
+          "q25": 0.3613273626146336,
+          "q75": 0.4435680332739156,
+          "q95": 0.4626819186006787,
+          "valid_count": 10,
+          "missing_count": 0
+        },
+        "repeatability_original_4px": {
+          "median": 0.5552463423932901,
+          "q05": 0.4606076917881957,
+          "q25": 0.5181519844118552,
+          "q75": 0.5666833778966132,
+          "q95": 0.5877615088119075,
+          "valid_count": 10,
+          "missing_count": 0
+        },
+        "repeatability_original_8px": {
+          "median": 0.5657740368874823,
+          "q05": 0.4750977013254038,
+          "q25": 0.5389341891975401,
+          "q75": 0.5825991899107061,
+          "q95": 0.6018915271475512,
+          "valid_count": 10,
+          "missing_count": 0
+        },
+        "repeatability_original_16px": {
+          "median": 0.5676293244570556,
+          "q05": 0.4768354580394638,
+          "q25": 0.5389341891975401,
+          "q75": 0.5825991899107061,
+          "q95": 0.6018915271475512,
+          "valid_count": 10,
+          "missing_count": 0
+        },
+        "displacement_original_median": {
+          "median": 1.3065776859545273,
+          "q05": 1.171907425557492,
+          "q25": 1.201543260728755,
+          "q75": 1.4945942973713147,
+          "q95": 1.605911340222642,
+          "valid_count": 10,
+          "missing_count": 0
+        },
+        "displacement_original_q95": {
+          "median": 3.3553230144161805,
+          "q05": 2.9940220476293566,
+          "q25": 3.179158629622378,
+          "q75": 3.7345779504258023,
+          "q95": 4.312696725075962,
+          "valid_count": 10,
+          "missing_count": 0
+        },
+        "grid_coverage_4px": {
+          "median": 0.90625,
+          "q05": 0.63203125,
+          "q25": 0.77734375,
+          "q75": 0.9375,
+          "q95": 0.97890625,
+          "valid_count": 10,
+          "missing_count": 0
+        },
+        "grid_coverage_8px": {
+          "median": 0.9140625,
+          "q05": 0.66015625,
+          "q25": 0.77734375,
+          "q75": 0.9375,
+          "q95": 0.97890625,
+          "valid_count": 10,
+          "missing_count": 0
+        }
+      }
+    },
+    "full_fov_512": {
+      "count_pairs": 10,
+      "metrics": {
+        "num_matches": {
+          "median": 413.5,
+          "q05": 245.35,
+          "q25": 373.0,
+          "q75": 462.0,
+          "q95": 499.65,
+          "valid_count": 10,
+          "missing_count": 0
+        },
+        "match_ratio_min": {
+          "median": 0.5414314151284836,
+          "q05": 0.46532179485355823,
+          "q25": 0.5168354798042221,
+          "q75": 0.5528925632532157,
+          "q95": 0.5683065902060457,
+          "valid_count": 10,
+          "missing_count": 0
+        },
+        "repeatability_original_2px": {
+          "median": 0.2861795800643783,
+          "q05": 0.1901471909738401,
+          "q25": 0.2324308057947383,
+          "q75": 0.31706796432641693,
+          "q95": 0.3360183891992551,
+          "valid_count": 10,
+          "missing_count": 0
+        },
+        "repeatability_original_4px": {
+          "median": 0.47812358237893127,
+          "q05": 0.3703840450349213,
+          "q25": 0.41377826167809434,
+          "q75": 0.502719395280236,
+          "q95": 0.5126034298739123,
+          "valid_count": 10,
+          "missing_count": 0
+        },
+        "repeatability_original_8px": {
+          "median": 0.535850977198697,
+          "q05": 0.459883394261817,
+          "q25": 0.5147405077371829,
+          "q75": 0.5434560500003073,
+          "q95": 0.566392391324011,
+          "valid_count": 10,
+          "missing_count": 0
+        },
+        "repeatability_original_16px": {
+          "median": 0.5408885269634456,
+          "q05": 0.46532179485355823,
+          "q25": 0.5168354798042221,
+          "q75": 0.5528925632532157,
+          "q95": 0.5683065902060457,
+          "valid_count": 10,
+          "missing_count": 0
+        },
+        "displacement_original_median": {
+          "median": 1.8895879185115385,
+          "q05": 1.4972242488188454,
+          "q25": 1.6860213347519781,
+          "q75": 2.1053496116459884,
+          "q95": 2.537473768302999,
+          "valid_count": 10,
+          "missing_count": 0
+        },
+        "displacement_original_q95": {
+          "median": 5.416483503676252,
+          "q05": 4.2260645308476565,
+          "q25": 4.430066915144211,
+          "q75": 5.969672197035271,
+          "q95": 6.418729417449496,
+          "valid_count": 10,
+          "missing_count": 0
+        },
+        "grid_coverage_4px": {
+          "median": 0.8828125,
+          "q05": 0.6375,
+          "q25": 0.76171875,
+          "q75": 0.90625,
+          "q95": 0.94609375,
+          "valid_count": 10,
+          "missing_count": 0
+        },
+        "grid_coverage_8px": {
+          "median": 0.890625,
+          "q05": 0.6546875,
+          "q25": 0.765625,
+          "q75": 0.91796875,
+          "q95": 0.94609375,
+          "valid_count": 10,
+          "missing_count": 0
+        }
+      }
+    }
+  },
+  "paired_original_pixel_deltas": {
+    "delta_R4_original": {
+      "median": -0.07712158410687772,
+      "min": -0.15293841723338208,
+      "max": -0.03663379353234991,
+      "valid_count": 10,
+      "missing_count": 0
+    },
+    "delta_R8_original": {
+      "median": -0.038202893328769694,
+      "min": -0.07853470653203787,
+      "max": 0.013616694343253744,
+      "valid_count": 10,
+      "missing_count": 0
+    },
+    "delta_displacement_original_q95": {
+      "median": 2.11951796910072,
+      "min": 0.5254178718215656,
+      "max": 2.5298421472628734,
+      "valid_count": 10,
+      "missing_count": 0
+    },
+    "delta_grid_coverage_8": {
+      "median": -0.03125,
+      "min": -0.0625,
+      "max": 0.046875,
+      "valid_count": 10,
+      "missing_count": 0
+    }
+  },
+  "per_source": [
+    {
+      "audit_index": 0,
+      "row_index": 5238,
+      "image_id": "Images/London/London_0002475_2017_09_062_51.49800118243781_-0.1615061806669715_X3DTHBynSOEtU-TEZp0u0A.jpg",
+      "policies": {
+        "square_crop_512": {
+          "canonical_width": 512,
+          "canonical_height": 512,
+          "num_keypoints_source": 1628,
+          "num_keypoints_relit": 1278,
+          "num_matches": 743,
+          "match_ratio_min": 0.581377151799687,
+          "repeatability_original_2px": 0.4327073552425665,
+          "repeatability_original_4px": 0.5751173708920188,
+          "repeatability_original_8px": 0.581377151799687,
+          "repeatability_original_16px": 0.581377151799687,
+          "displacement_original_median": 1.3655143548975415,
+          "displacement_original_q95": 3.0635733480766434,
+          "grid_coverage_4px": 0.9375,
+          "grid_coverage_8px": 0.9375
+        },
+        "full_fov_512": {
+          "canonical_width": 512,
+          "canonical_height": 384,
+          "num_keypoints_source": 1090,
+          "num_keypoints_relit": 904,
+          "num_matches": 475,
+          "match_ratio_min": 0.5254424778761062,
+          "repeatability_original_2px": 0.28982300884955753,
+          "repeatability_original_4px": 0.49004424778761063,
+          "repeatability_original_8px": 0.5254424778761062,
+          "repeatability_original_16px": 0.5254424778761062,
+          "displacement_original_median": 1.8128501124347545,
+          "displacement_original_q95": 4.315807796220324,
+          "grid_coverage_4px": 0.90625,
+          "grid_coverage_8px": 0.90625
+        }
+      },
+      "paired_original_pixel_deltas": {
+        "delta_R4_original": -0.08507312310440812,
+        "delta_R8_original": -0.05593467392358076,
+        "delta_displacement_original_q95": 1.2522344481436805,
+        "delta_grid_coverage_8": -0.03125
+      }
+    },
+    {
+      "audit_index": 1,
+      "row_index": 912,
+      "image_id": "Images/Boston/Boston_0002033_2011_11_090_42.33909392745385_-71.09185286421231_hpklwHPlAIvq3pxioasUog.jpg",
+      "policies": {
+        "square_crop_512": {
+          "canonical_width": 512,
+          "canonical_height": 512,
+          "num_keypoints_source": 1393,
+          "num_keypoints_relit": 1697,
+          "num_matches": 727,
+          "match_ratio_min": 0.5218951902368988,
+          "repeatability_original_2px": 0.353194544149318,
+          "repeatability_original_4px": 0.5139985642498205,
+          "repeatability_original_8px": 0.5218951902368988,
+          "repeatability_original_16px": 0.5218951902368988,
+          "displacement_original_median": 1.5376209448625724,
+          "displacement_original_q95": 3.176244553917358,
+          "grid_coverage_4px": 0.953125,
+          "grid_coverage_8px": 0.953125
+        },
+        "full_fov_512": {
+          "canonical_width": 512,
+          "canonical_height": 384,
+          "num_keypoints_source": 884,
+          "num_keypoints_relit": 847,
+          "num_matches": 405,
+          "match_ratio_min": 0.4781582054309327,
+          "repeatability_original_2px": 0.22195985832349469,
+          "repeatability_original_4px": 0.39787485242030696,
+          "repeatability_original_8px": 0.4734356552538371,
+          "repeatability_original_16px": 0.4781582054309327,
+          "displacement_original_median": 2.1285648104533337,
+          "displacement_original_q95": 5.492312777575275,
+          "grid_coverage_4px": 0.90625,
+          "grid_coverage_8px": 0.921875
+        }
+      },
+      "paired_original_pixel_deltas": {
+        "delta_R4_original": -0.11612371182951353,
+        "delta_R8_original": -0.048459534983061714,
+        "delta_displacement_original_q95": 2.3160682236579175,
+        "delta_grid_coverage_8": -0.03125
+      }
+    },
+    {
+      "audit_index": 2,
+      "row_index": 204,
+      "image_id": "Images/Boston/Boston_0000770_2007_09_069_42.32798290242697_-71.06787206223875_ty_-aV0NxPDeBpFM0Il4CQ.jpg",
+      "policies": {
+        "square_crop_512": {
+          "canonical_width": 512,
+          "canonical_height": 512,
+          "num_keypoints_source": 1438,
+          "num_keypoints_relit": 1193,
+          "num_matches": 634,
+          "match_ratio_min": 0.5314333612740989,
+          "repeatability_original_2px": 0.38222967309304273,
+          "repeatability_original_4px": 0.5138306789606035,
+          "repeatability_original_8px": 0.5314333612740989,
+          "repeatability_original_16px": 0.5314333612740989,
+          "displacement_original_median": 1.322641431077467,
+          "displacement_original_q95": 3.7352552682956746,
+          "grid_coverage_4px": 0.90625,
+          "grid_coverage_8px": 0.90625
+        },
+        "full_fov_512": {
+          "canonical_width": 512,
+          "canonical_height": 384,
+          "num_keypoints_source": 1144,
+          "num_keypoints_relit": 899,
+          "num_matches": 498,
+          "match_ratio_min": 0.5539488320355951,
+          "repeatability_original_2px": 0.2825361512791991,
+          "repeatability_original_4px": 0.4771968854282536,
+          "repeatability_original_8px": 0.5450500556173526,
+          "repeatability_original_16px": 0.5539488320355951,
+          "displacement_original_median": 1.9663257245883226,
+          "displacement_original_q95": 6.05364859471359,
+          "grid_coverage_4px": 0.84375,
+          "grid_coverage_8px": 0.859375
+        }
+      },
+      "paired_original_pixel_deltas": {
+        "delta_R4_original": -0.03663379353234991,
+        "delta_R8_original": 0.013616694343253744,
+        "delta_displacement_original_q95": 2.3183933264179157,
+        "delta_grid_coverage_8": -0.046875
+      }
+    },
+    {
+      "audit_index": 3,
+      "row_index": 6074,
+      "image_id": "Images/London/London_0005233_2015_10_046_51.5113221292079_-0.1434460124169976_rXZCmcRuSSvZEQLUFM-1CQ.jpg",
+      "policies": {
+        "square_crop_512": {
+          "canonical_width": 512,
+          "canonical_height": 512,
+          "num_keypoints_source": 880,
+          "num_keypoints_relit": 1120,
+          "num_matches": 518,
+          "match_ratio_min": 0.5886363636363636,
+          "repeatability_original_2px": 0.44545454545454544,
+          "repeatability_original_4px": 0.5647727272727273,
+          "repeatability_original_8px": 0.5886363636363636,
+          "repeatability_original_16px": 0.5886363636363636,
+          "displacement_original_median": 1.1857489215951076,
+          "displacement_original_q95": 3.7325459968161856,
+          "grid_coverage_4px": 0.90625,
+          "grid_coverage_8px": 0.921875
+        },
+        "full_fov_512": {
+          "canonical_width": 512,
+          "canonical_height": 384,
+          "num_keypoints_source": 716,
+          "num_keypoints_relit": 723,
+          "num_matches": 368,
+          "match_ratio_min": 0.5139664804469274,
+          "repeatability_original_2px": 0.3240223463687151,
+          "repeatability_original_4px": 0.4790502793296089,
+          "repeatability_original_8px": 0.5111731843575419,
+          "repeatability_original_16px": 0.5139664804469274,
+          "displacement_original_median": 1.4444509142051587,
+          "displacement_original_q95": 4.257963868637751,
+          "grid_coverage_4px": 0.890625,
+          "grid_coverage_8px": 0.90625
+        }
+      },
+      "paired_original_pixel_deltas": {
+        "delta_R4_original": -0.0857224479431184,
+        "delta_R8_original": -0.07746317927882174,
+        "delta_displacement_original_q95": 0.5254178718215656,
+        "delta_grid_coverage_8": -0.015625
+      }
+    },
+    {
+      "audit_index": 4,
+      "row_index": 2253,
+      "image_id": "Images/Boston/Boston_0004871_2014_09_138_42.36289685370989_-71.05898162238755_SrOK8ObgtDOV4QbtPvya7g.jpg",
+      "policies": {
+        "square_crop_512": {
+          "canonical_width": 512,
+          "canonical_height": 512,
+          "num_keypoints_source": 539,
+          "num_keypoints_relit": 1026,
+          "num_matches": 309,
+          "match_ratio_min": 0.5732838589981447,
+          "repeatability_original_2px": 0.35435992578849723,
+          "repeatability_original_4px": 0.5306122448979592,
+          "repeatability_original_8px": 0.5695732838589982,
+          "repeatability_original_16px": 0.5732838589981447,
+          "displacement_original_median": 1.594252016102265,
+          "displacement_original_q95": 4.55995370099764,
+          "grid_coverage_4px": 0.640625,
+          "grid_coverage_8px": 0.703125
+        },
+        "full_fov_512": {
+          "canonical_width": 512,
+          "canonical_height": 384,
+          "num_keypoints_source": 362,
+          "num_keypoints_relit": 651,
+          "num_matches": 199,
+          "match_ratio_min": 0.5497237569060773,
+          "repeatability_original_2px": 0.21823204419889503,
+          "repeatability_original_4px": 0.40331491712707185,
+          "repeatability_original_8px": 0.5386740331491713,
+          "repeatability_original_16px": 0.5497237569060773,
+          "displacement_original_median": 2.509986931260583,
+          "displacement_original_q95": 6.544618902826502,
+          "grid_coverage_4px": 0.609375,
+          "grid_coverage_8px": 0.640625
+        }
+      },
+      "paired_original_pixel_deltas": {
+        "delta_R4_original": -0.12729732777088737,
+        "delta_R8_original": -0.03089925070982691,
+        "delta_displacement_original_q95": 1.9846652018288626,
+        "delta_grid_coverage_8": -0.0625
+      }
+    },
+    {
+      "audit_index": 5,
+      "row_index": 2006,
+      "image_id": "Images/Boston/Boston_0004402_2017_07_224_42.35901686695043_-71.05982677979381_8MhsE3cAIBej6EvxpeKrQA.jpg",
+      "policies": {
+        "square_crop_512": {
+          "canonical_width": 512,
+          "canonical_height": 512,
+          "num_keypoints_source": 905,
+          "num_keypoints_relit": 765,
+          "num_matches": 446,
+          "match_ratio_min": 0.5830065359477125,
+          "repeatability_original_2px": 0.43790849673202614,
+          "repeatability_original_4px": 0.5673202614379085,
+          "repeatability_original_8px": 0.5830065359477125,
+          "repeatability_original_16px": 0.5830065359477125,
+          "displacement_original_median": 1.2905139408315873,
+          "displacement_original_q95": 3.4521034586752086,
+          "grid_coverage_4px": 1.0,
+          "grid_coverage_8px": 1.0
+        },
+        "full_fov_512": {
+          "canonical_width": 512,
+          "canonical_height": 384,
+          "num_keypoints_source": 826,
+          "num_keypoints_relit": 720,
+          "num_matches": 388,
+          "match_ratio_min": 0.5388888888888889,
+          "repeatability_original_2px": 0.3458333333333333,
+          "repeatability_original_4px": 0.5069444444444444,
+          "repeatability_original_8px": 0.5375,
+          "repeatability_original_16px": 0.5388888888888889,
+          "displacement_original_median": 1.5617249911244624,
+          "displacement_original_q95": 4.199965072655761,
+          "grid_coverage_4px": 0.953125,
+          "grid_coverage_8px": 0.953125
+        }
+      },
+      "paired_original_pixel_deltas": {
+        "delta_R4_original": -0.06037581699346406,
+        "delta_R8_original": -0.04550653594771248,
+        "delta_displacement_original_q95": 0.7478616139805525,
+        "delta_grid_coverage_8": -0.046875
+      }
+    },
+    {
+      "audit_index": 6,
+      "row_index": 1828,
+      "image_id": "Images/Boston/Boston_0004011_2011_10_122_42.35616786638993_-71.1029976465264_En7WLAZT8YXoKI-Qn-VnpA.jpg",
+      "policies": {
+        "square_crop_512": {
+          "canonical_width": 512,
+          "canonical_height": 512,
+          "num_keypoints_source": 1293,
+          "num_keypoints_relit": 1266,
+          "num_matches": 557,
+          "match_ratio_min": 0.4399684044233807,
+          "repeatability_original_2px": 0.2772511848341232,
+          "repeatability_original_4px": 0.41706161137440756,
+          "repeatability_original_8px": 0.4368088467614534,
+          "repeatability_original_16px": 0.4399684044233807,
+          "displacement_original_median": 1.615450787230223,
+          "displacement_original_q95": 4.010493754505023,
+          "grid_coverage_4px": 0.734375,
+          "grid_coverage_8px": 0.734375
+        },
+        "full_fov_512": {
+          "canonical_width": 512,
+          "canonical_height": 384,
+          "num_keypoints_source": 664,
+          "num_keypoints_relit": 724,
+          "num_matches": 302,
+          "match_ratio_min": 0.45481927710843373,
+          "repeatability_original_2px": 0.16716867469879518,
+          "repeatability_original_4px": 0.34789156626506024,
+          "repeatability_original_8px": 0.44879518072289154,
+          "repeatability_original_16px": 0.45481927710843373,
+          "displacement_original_median": 2.5599629986104304,
+          "displacement_original_q95": 6.264864490877601,
+          "grid_coverage_4px": 0.734375,
+          "grid_coverage_8px": 0.734375
+        }
+      },
+      "paired_original_pixel_deltas": {
+        "delta_R4_original": -0.06917004510934732,
+        "delta_R8_original": 0.011986333961438167,
+        "delta_displacement_original_q95": 2.254370736372578,
+        "delta_grid_coverage_8": 0.0
+      }
+    },
+    {
+      "audit_index": 7,
+      "row_index": 1143,
+      "image_id": "Images/Boston/Boston_0002400_2020_11_108_42.34189215474483_-71.07617936284367_w5dflWOINDziz-6EokkbyQ.jpg",
+      "policies": {
+        "square_crop_512": {
+          "canonical_width": 512,
+          "canonical_height": 512,
+          "num_keypoints_source": 1162,
+          "num_keypoints_relit": 1697,
+          "num_matches": 712,
+          "match_ratio_min": 0.612736660929432,
+          "repeatability_original_2px": 0.463855421686747,
+          "repeatability_original_4px": 0.5981067125645438,
+          "repeatability_original_8px": 0.612736660929432,
+          "repeatability_original_16px": 0.612736660929432,
+          "displacement_original_median": 1.1787865181841033,
+          "displacement_original_q95": 3.1879008567374383,
+          "grid_coverage_4px": 0.90625,
+          "grid_coverage_8px": 0.90625
+        },
+        "full_fov_512": {
+          "canonical_width": 512,
+          "canonical_height": 384,
+          "num_keypoints_source": 921,
+          "num_keypoints_relit": 1367,
+          "num_matches": 501,
+          "match_ratio_min": 0.5439739413680782,
+          "repeatability_original_2px": 0.26384364820846906,
+          "repeatability_original_4px": 0.44516829533116176,
+          "repeatability_original_8px": 0.5342019543973942,
+          "repeatability_original_16px": 0.5428881650380022,
+          "displacement_original_median": 2.0357040152239527,
+          "displacement_original_q95": 5.717743004000312,
+          "grid_coverage_4px": 0.875,
+          "grid_coverage_8px": 0.875
+        }
+      },
+      "paired_original_pixel_deltas": {
+        "delta_R4_original": -0.15293841723338208,
+        "delta_R8_original": -0.07853470653203787,
+        "delta_displacement_original_q95": 2.5298421472628734,
+        "delta_grid_coverage_8": -0.03125
+      }
+    },
+    {
+      "audit_index": 8,
+      "row_index": 6033,
+      "image_id": "Images/London/London_0005082_2014_05_259_51.51066486508206_-0.1489280192492557_P9JnHMhkEeVbFHeG-BLm6g.jpg",
+      "policies": {
+        "square_crop_512": {
+          "canonical_width": 512,
+          "canonical_height": 512,
+          "num_keypoints_source": 1058,
+          "num_keypoints_relit": 1126,
+          "num_matches": 594,
+          "match_ratio_min": 0.5614366729678639,
+          "repeatability_original_2px": 0.4612476370510397,
+          "repeatability_original_4px": 0.554820415879017,
+          "repeatability_original_8px": 0.5614366729678639,
+          "repeatability_original_16px": 0.5614366729678639,
+          "displacement_original_median": 1.16627907704481,
+          "displacement_original_q95": 2.9371164381724855,
+          "grid_coverage_4px": 0.9375,
+          "grid_coverage_8px": 0.9375
+        },
+        "full_fov_512": {
+          "canonical_width": 512,
+          "canonical_height": 384,
+          "num_keypoints_source": 742,
+          "num_keypoints_relit": 757,
+          "num_matches": 422,
+          "match_ratio_min": 0.568733153638814,
+          "repeatability_original_2px": 0.31805929919137466,
+          "repeatability_original_4px": 0.5107816711590296,
+          "repeatability_original_8px": 0.5646900269541779,
+          "repeatability_original_16px": 0.568733153638814,
+          "displacement_original_median": 1.6615032752220875,
+          "displacement_original_q95": 5.340654229777229,
+          "grid_coverage_4px": 0.9375,
+          "grid_coverage_8px": 0.9375
+        }
+      },
+      "paired_original_pixel_deltas": {
+        "delta_R4_original": -0.044038744719987366,
+        "delta_R8_original": 0.0032533539863139893,
+        "delta_displacement_original_q95": 2.4035377916047436,
+        "delta_grid_coverage_8": 0.0
+      }
+    },
+    {
+      "audit_index": 9,
+      "row_index": 839,
+      "image_id": "Images/Boston/Boston_0001944_2019_11_083_42.33806318372516_-71.0638400577771__Vbd_atU565s61AzoRmnNg.jpg",
+      "policies": {
+        "square_crop_512": {
+          "canonical_width": 512,
+          "canonical_height": 512,
+          "num_keypoints_source": 952,
+          "num_keypoints_relit": 1156,
+          "num_matches": 535,
+          "match_ratio_min": 0.5619747899159664,
+          "repeatability_original_2px": 0.41911764705882354,
+          "repeatability_original_4px": 0.555672268907563,
+          "repeatability_original_8px": 0.5619747899159664,
+          "repeatability_original_16px": 0.5619747899159664,
+          "displacement_original_median": 1.248926278129698,
+          "displacement_original_q95": 3.258542570157152,
+          "grid_coverage_4px": 0.625,
+          "grid_coverage_8px": 0.625
+        },
+        "full_fov_512": {
+          "canonical_width": 512,
+          "canonical_height": 384,
+          "num_keypoints_source": 745,
+          "num_keypoints_relit": 822,
+          "num_matches": 423,
+          "match_ratio_min": 0.5677852348993289,
+          "repeatability_original_2px": 0.31409395973154364,
+          "repeatability_original_4px": 0.5140939597315436,
+          "repeatability_original_8px": 0.5677852348993289,
+          "repeatability_original_16px": 0.5677852348993289,
+          "displacement_original_median": 1.7595755133416502,
+          "displacement_original_q95": 4.772844271915875,
+          "grid_coverage_4px": 0.671875,
+          "grid_coverage_8px": 0.671875
+        }
+      },
+      "paired_original_pixel_deltas": {
+        "delta_R4_original": -0.04157830917601946,
+        "delta_R8_original": 0.005810444983362473,
+        "delta_displacement_original_q95": 1.5143017017587228,
+        "delta_grid_coverage_8": 0.046875
+      }
+    }
+  ],
+  "legacy_output_pixel_metrics": {
+    "cross_policy_comparable": false,
+    "reason": "Not directly comparable across geometry policies because canonical scale differs.",
+    "coverage": {
+      "coordinate_system": "normalized canonical image coordinates",
+      "grid_shape": [
+        8,
+        8
+      ],
+      "role": "spatial-distribution diagnostic only",
+      "qualifying_displacement_units": "canonical output pixels",
+      "qualifying_tolerances_pixels": [
+        4,
+        8
+      ],
+      "qualification_mask_changed": false
+    },
+    "policies": {
+      "square_crop_512": {
+        "count_pairs": 10,
+        "metrics": {
+          "num_keypoints_source": {
+            "median": 1110.0,
+            "q05": 692.45,
+            "q25": 916.75,
+            "q75": 1368.0,
+            "q95": 1542.4999999999998,
+            "valid_count": 10,
+            "missing_count": 0
+          },
+          "num_keypoints_relit": {
+            "median": 1174.5,
+            "q05": 882.45,
+            "q25": 1121.5,
+            "q75": 1275.0,
+            "q95": 1697.0,
+            "valid_count": 10,
+            "missing_count": 0
+          },
+          "num_matches": {
+            "median": 575.5,
+            "q05": 370.65,
+            "q25": 522.25,
+            "q75": 692.5,
+            "q95": 735.8,
+            "valid_count": 10,
+            "missing_count": 0
+          },
+          "match_ratio_min": {
+            "median": 0.5676293244570556,
+            "q05": 0.4768354580394638,
+            "q25": 0.5389341891975401,
+            "q75": 0.5825991899107061,
+            "q95": 0.6018915271475512,
+            "valid_count": 10,
+            "missing_count": 0
+          },
+          "repeatability_min_2px": {
+            "median": 0.39727745558317223,
+            "q05": 0.2868961888934807,
+            "q25": 0.33586083934220257,
+            "q75": 0.425881981580511,
+            "q95": 0.4376849282086488,
+            "valid_count": 10,
+            "missing_count": 0
+          },
+          "repeatability_min_4px": {
+            "median": 0.5486290924687456,
+            "q05": 0.451565179449898,
+            "q25": 0.5117493776862047,
+            "q75": 0.5606450534759359,
+            "q95": 0.5841076579961698,
+            "valid_count": 10,
+            "missing_count": 0
+          },
+          "repeatability_min_8px": {
+            "median": 0.5648463931026957,
+            "q05": 0.4750977013254038,
+            "q25": 0.5389341891975401,
+            "q75": 0.5825991899107061,
+            "q95": 0.6018915271475512,
+            "valid_count": 10,
+            "missing_count": 0
+          },
+          "repeatability_min_16px": {
+            "median": 0.5676293244570556,
+            "q05": 0.4768354580394638,
+            "q25": 0.5389341891975401,
+            "q75": 0.5825991899107061,
+            "q95": 0.6018915271475512,
+            "valid_count": 10,
+            "missing_count": 0
+          },
+          "precision_matches_2px": {
+            "median": 0.6951283631652432,
+            "q05": 0.5730839622805948,
+            "q25": 0.6404707561865668,
+            "q75": 0.7157851312540938,
+            "q95": 0.758065208065208,
+            "valid_count": 10,
+            "missing_count": 0
+          },
+          "precision_matches_4px": {
+            "median": 0.9661945130246385,
+            "q05": 0.9108902290936768,
+            "q25": 0.9519734358062434,
+            "q75": 0.9764844643844245,
+            "q95": 0.9820435172723194,
+            "valid_count": 10,
+            "missing_count": 0
+          },
+          "precision_matches_8px": {
+            "median": 1.0,
+            "q05": 0.9914285963291558,
+            "q25": 1.0,
+            "q75": 1.0,
+            "q95": 1.0,
+            "valid_count": 10,
+            "missing_count": 0
+          },
+          "precision_matches_16px": {
+            "median": 1.0,
+            "q05": 1.0,
+            "q25": 1.0,
+            "q75": 1.0,
+            "q95": 1.0,
+            "valid_count": 10,
+            "missing_count": 0
+          },
+          "displacement_median": {
+            "median": 1.3936828650181623,
+            "q05": 1.2500345872613248,
+            "q25": 1.2816461447773388,
+            "q75": 1.5942339171960689,
+            "q95": 1.7129720962374848,
+            "valid_count": 10,
+            "missing_count": 0
+          },
+          "displacement_q95": {
+            "median": 3.579011215377259,
+            "q05": 3.1936235174713135,
+            "q25": 3.3911025382638704,
+            "q75": 3.9835498137875227,
+            "q95": 4.600209840081026,
+            "valid_count": 10,
+            "missing_count": 0
+          },
+          "grid_coverage_4px": {
+            "median": 0.90625,
+            "q05": 0.63203125,
+            "q25": 0.77734375,
+            "q75": 0.9375,
+            "q95": 0.97890625,
+            "valid_count": 10,
+            "missing_count": 0
+          },
+          "grid_coverage_8px": {
+            "median": 0.9140625,
+            "q05": 0.66015625,
+            "q25": 0.77734375,
+            "q75": 0.9375,
+            "q95": 0.97890625,
+            "valid_count": 10,
+            "missing_count": 0
+          }
+        }
+      },
+      "full_fov_512": {
+        "count_pairs": 10,
+        "metrics": {
+          "num_keypoints_source": {
+            "median": 785.5,
+            "q05": 497.9,
+            "q25": 722.5,
+            "q75": 911.75,
+            "q95": 1119.7,
+            "valid_count": 10,
+            "missing_count": 0
+          },
+          "num_keypoints_relit": {
+            "median": 789.5,
+            "q05": 682.05,
+            "q25": 723.25,
+            "q75": 886.0,
+            "q95": 1158.6499999999994,
+            "valid_count": 10,
+            "missing_count": 0
+          },
+          "num_matches": {
+            "median": 413.5,
+            "q05": 245.35,
+            "q25": 373.0,
+            "q75": 462.0,
+            "q95": 499.65,
+            "valid_count": 10,
+            "missing_count": 0
+          },
+          "match_ratio_min": {
+            "median": 0.5414314151284836,
+            "q05": 0.46532179485355823,
+            "q25": 0.5168354798042221,
+            "q75": 0.5528925632532157,
+            "q95": 0.5683065902060457,
+            "valid_count": 10,
+            "missing_count": 0
+          },
+          "repeatability_min_2px": {
+            "median": 0.3638254648724738,
+            "q05": 0.24565665978832457,
+            "q25": 0.2957189390414146,
+            "q75": 0.3854148700836114,
+            "q95": 0.40027871368673257,
+            "valid_count": 10,
+            "missing_count": 0
+          },
+          "repeatability_min_4px": {
+            "median": 0.5034729774237048,
+            "q05": 0.417970050212657,
+            "q25": 0.48274680415834337,
+            "q75": 0.5220040560471977,
+            "q95": 0.5406315237251036,
+            "valid_count": 10,
+            "missing_count": 0
+          },
+          "repeatability_min_8px": {
+            "median": 0.5392598624683316,
+            "q05": 0.4628996209157764,
+            "q25": 0.5168354798042221,
+            "q75": 0.5506770874943923,
+            "q95": 0.5676053293294018,
+            "valid_count": 10,
+            "missing_count": 0
+          },
+          "repeatability_min_16px": {
+            "median": 0.5408885269634456,
+            "q05": 0.46532179485355823,
+            "q25": 0.5168354798042221,
+            "q75": 0.5528925632532157,
+            "q95": 0.5683065902060457,
+            "valid_count": 10,
+            "missing_count": 0
+          },
+          "precision_matches_2px": {
+            "median": 0.663540687572987,
+            "q05": 0.49340577057472795,
+            "q25": 0.5978487469505434,
+            "q75": 0.7013295086056374,
+            "q95": 0.747680412371134,
+            "valid_count": 10,
+            "missing_count": 0
+          },
+          "precision_matches_4px": {
+            "median": 0.9284535720554679,
+            "q05": 0.8744983194116276,
+            "q25": 0.915046413197701,
+            "q75": 0.9668595246982705,
+            "q95": 0.9737911810847154,
+            "valid_count": 10,
+            "missing_count": 0
+          },
+          "precision_matches_8px": {
+            "median": 0.9978111498125202,
+            "q05": 0.9908795474377877,
+            "q25": 0.9936166298749081,
+            "q75": 1.0,
+            "q95": 1.0,
+            "valid_count": 10,
+            "missing_count": 0
+          },
+          "precision_matches_16px": {
+            "median": 1.0,
+            "q05": 0.9989021956087825,
+            "q25": 1.0,
+            "q75": 1.0,
+            "q95": 1.0,
+            "valid_count": 10,
+            "missing_count": 0
+          },
+          "displacement_median": {
+            "median": 1.511670334809231,
+            "q05": 1.1977793990550762,
+            "q25": 1.3488170678015825,
+            "q75": 1.6842796893167908,
+            "q95": 2.0299790146423993,
+            "valid_count": 10,
+            "missing_count": 0
+          },
+          "displacement_q95": {
+            "median": 4.333186802941002,
+            "q05": 3.3808516246781255,
+            "q25": 3.5440535321153694,
+            "q75": 4.775737757628217,
+            "q95": 5.134983533959597,
+            "valid_count": 10,
+            "missing_count": 0
+          },
+          "grid_coverage_4px": {
+            "median": 0.8828125,
+            "q05": 0.6375,
+            "q25": 0.76171875,
+            "q75": 0.90625,
+            "q95": 0.94609375,
+            "valid_count": 10,
+            "missing_count": 0
+          },
+          "grid_coverage_8px": {
+            "median": 0.890625,
+            "q05": 0.6546875,
+            "q25": 0.765625,
+            "q75": 0.91796875,
+            "q95": 0.94609375,
+            "valid_count": 10,
+            "missing_count": 0
+          }
+        }
+      }
+    },
+    "legacy_output_pixel_deltas": {
+      "cross_policy_comparable": false,
+      "reason": "Not directly comparable across geometry policies because canonical scale differs.",
+      "metrics": {
+        "delta_R4": {
+          "median": -0.03613240834589318,
+          "min": -0.09737881259799552,
+          "max": 0.002055930637282488,
+          "valid_count": 10,
+          "missing_count": 0
+        },
+        "delta_R8": {
+          "median": -0.03381837416031208,
+          "min": -0.07466988318943624,
+          "max": 0.021403123709215932,
+          "valid_count": 10,
+          "missing_count": 0
+        },
+        "delta_displacement_q95": {
+          "median": 0.5528880478802214,
+          "min": -0.5750113016937304,
+          "max": 1.173766822680315,
+          "valid_count": 10,
+          "missing_count": 0
+        },
+        "delta_grid_coverage_8": {
+          "median": -0.03125,
+          "min": -0.0625,
+          "max": 0.046875,
+          "valid_count": 10,
+          "missing_count": 0
+        }
+      }
+    },
+    "legacy_output_pixel_gate": {
+      "cross_policy_comparable": false,
+      "reason": "Not directly comparable across geometry policies because canonical scale differs.",
+      "thresholds": {
+        "repeatability_min_8px_min": 0.4,
+        "grid_coverage_8px_min": 0.6,
+        "displacement_q95_max": 5.0,
+        "diagnostic_only": true,
+        "filters_data": false
+      },
+      "policies": {
+        "square_crop_512": {
+          "pass_count": 10,
+          "total_count": 10,
+          "acceptance_fraction": 1.0
+        },
+        "full_fov_512": {
+          "pass_count": 8,
+          "total_count": 10,
+          "acceptance_fraction": 0.8
+        }
+      }
+    }
+  }
+}
