@@ -1,0 +1,38 @@
+name: countermine-probe
+
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+
+dependencies:
+  - python=3.10
+
+  # Keep CUDA / PyTorch aligned with the already validated VPR environment.
+  - pytorch::pytorch=2.1.0
+  - pytorch::torchvision=0.16.0
+  - pytorch::pytorch-cuda=12.1
+
+  - numpy=1.26.4
+  - pillow=10.2.0
+  - pip
+  - setuptools<81
+  - tqdm
+
+  - pip:
+      # IC-Light / Stable Diffusion stack
+      - diffusers==0.27.2
+      - transformers==4.36.2
+      - huggingface_hub==0.25.2
+      - accelerate==0.26.1
+      - peft==0.7.1
+      - safetensors==0.4.5
+      - einops==0.8.0
+      - protobuf==3.20.3
+
+      # Probe image processing
+      - opencv-python==4.10.0.84
+
+      # LightGlue / ALIKED
+      - kornia==0.7.2
+      - matplotlib==3.8.4
