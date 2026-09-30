@@ -32,7 +32,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 @dataclass(frozen=True)
 class ICLightConfig:
-    """Complete inference settings for the fixed, mild 512-pixel smoke audit.
+    """Complete inference settings for mild, explicitly sized canonical probes.
 
     ``background=None`` selects the official text-to-image first pass, without
     directional gradients. ``lowres_denoise`` is retained for configuration
@@ -79,8 +79,10 @@ class ICLightConfig:
     local_files_only: bool = False
 
     def __post_init__(self):
-        if (self.width, self.height) != (512, 512):
-            raise ValueError("The audit requires width=height=512")
+        for name in ("width", "height"):
+            value = getattr(self, name)
+            if not isinstance(value, int) or isinstance(value, bool) or value < 256 or value % 64:
+                raise ValueError(f"{name} must be an integer >= 256 and divisible by 64")
         if self.num_samples != 1:
             raise ValueError("The audit requires num_samples=1")
         if self.highres_scale != 1.0:
@@ -442,7 +444,9 @@ class ICLightAdapter:
         """Return one canonical RGB probe without ever modifying ``image``."""
         if not isinstance(image, Image.Image):
             raise TypeError("ICLightAdapter requires a PIL image")
-        assert image.size == (512, 512), "IC-Light requires an exactly 512x512 canonical input"
+        expected_size = (self.config.width, self.config.height)
+        if image.size != expected_size:
+            raise ValueError(f"IC-Light input dimensions must exactly match {expected_size}")
         assert image.mode == "RGB", "IC-Light requires an RGB canonical input"
         if mode not in MODES:
             raise ValueError(f"Unknown preprocessing mode {mode!r}; expected one of {MODES}")
@@ -465,12 +469,12 @@ class ICLightAdapter:
         if len(outputs) != 1:
             raise ValueError(f"IC-Light returned {len(outputs)} images; expected exactly one")
         pixels = outputs[0]
-        if pixels.shape != (512, 512, 3) or not np.isfinite(pixels).all():
-            raise ValueError("IC-Light output must be finite 512x512 RGB pixels")
+        if pixels.shape != (self.config.height, self.config.width, 3) or not np.isfinite(pixels).all():
+            raise ValueError(f"IC-Light output must be finite {expected_size} RGB pixels")
         if pixels.dtype != np.uint8:
             raise ValueError("IC-Light output must use uint8 RGB pixels")
         output = Image.fromarray(pixels)
-        assert output.size == (512, 512) and output.mode == "RGB"
+        assert output.size == expected_size and output.mode == "RGB"
         if cuda:
             torch.cuda.synchronize(run_device)
         self.last_run_stats.update({

@@ -21,6 +21,7 @@ from countermine.probe.iclight_adapter import (
     _apply_offset,
     _configure_unet,
     _numpy_to_tensor,
+    _resize_and_center_crop,
     _tensor_to_numpy,
     alpha_statistics,
 )
@@ -40,14 +41,18 @@ class _FakeVAE:
     def encode(self, images):
         assert torch.is_inference_mode_enabled()
         self.encoded.append(images.clone())
-        pooled = torch.nn.functional.adaptive_avg_pool2d(images, (64, 64))
+        pooled = torch.nn.functional.adaptive_avg_pool2d(
+            images, (images.shape[2] // 8, images.shape[3] // 8),
+        )
         latents = torch.cat((pooled, pooled[:, :1]), dim=1)
         return SimpleNamespace(latent_dist=SimpleNamespace(mode=lambda: latents))
 
     def decode(self, latents):
         assert torch.is_inference_mode_enabled()
         self.decoded.append(latents.clone())
-        pixels = torch.nn.functional.interpolate(latents[:, :3], size=(512, 512))
+        pixels = torch.nn.functional.interpolate(
+            latents[:, :3], size=(latents.shape[2] * 8, latents.shape[3] * 8),
+        )
         return SimpleNamespace(sample=pixels.clamp(-1, 1))
 
 
@@ -58,7 +63,10 @@ class _FakePipeline:
     def __call__(self, **kwargs):
         assert torch.is_inference_mode_enabled()
         self.calls.append(kwargs)
-        latents = torch.rand((1, 4, 64, 64), generator=kwargs["generator"])
+        latents = torch.rand(
+            (1, 4, kwargs["height"] // 8, kwargs["width"] // 8),
+            generator=kwargs["generator"],
+        )
         return SimpleNamespace(images=latents * 0.25)
 
 
@@ -85,8 +93,8 @@ class _TinyUNet(torch.nn.Module):
 
 
 class ICLightAdapterTest(unittest.TestCase):
-    def _adapter_with_cpu_components(self):
-        adapter = ICLightAdapter(ICLightConfig(device="cpu"))
+    def _adapter_with_cpu_components(self, width=512, height=512):
+        adapter = ICLightAdapter(ICLightConfig(device="cpu", width=width, height=height))
         adapter.device = torch.device("cpu")
         adapter.vae = _FakeVAE()
         adapter.unet = SimpleNamespace(device=torch.device("cpu"), dtype=torch.float32)
@@ -115,9 +123,10 @@ class ICLightAdapterTest(unittest.TestCase):
         with self.assertRaises(dataclasses.FrozenInstanceError):
             config.seed = 6
 
-    def test_config_rejects_noncanonical_or_multiple_output_settings(self):
+    def test_config_rejects_invalid_geometry_or_multiple_output_settings(self):
         for overrides in (
-            {"width": 256}, {"height": 640}, {"num_samples": 2},
+            {"width": 255}, {"height": 383}, {"num_samples": 2},
+            {"width": 512.0}, {"height": True}, {"width": 0}, {"height": -384},
             {"highres_scale": 1.5}, {"seed": -1}, {"seed": True},
             {"steps": 0}, {"steps": 2.5}, {"cfg": float("nan")},
             {"highres_denoise": 0}, {"lowres_denoise": 1.5},
@@ -125,6 +134,12 @@ class ICLightAdapterTest(unittest.TestCase):
             with self.subTest(overrides=overrides):
                 with self.assertRaises(ValueError):
                     ICLightConfig(**overrides)
+
+    def test_config_accepts_explicit_integer_64_divisible_canonical_geometry(self):
+        for width, height in ((512, 512), (512, 384), (384, 512), (256, 512), (512, 640)):
+            with self.subTest(width=width, height=height):
+                config = ICLightConfig(width=width, height=height)
+                self.assertEqual((config.width, config.height), (width, height))
 
     def test_config_rejects_prompt_changes_and_directional_backgrounds(self):
         for overrides in (
@@ -450,6 +465,59 @@ adapter = ICLightAdapter()
             round(25 / adapter.config.highres_denoise),
         )
         torch.testing.assert_close(adapter.vae.encoded[0], torch.zeros((1, 3, 512, 512)))
+
+    def test_rectangle_mismatch_fails_before_model_loading_without_input_resize(self):
+        adapter = ICLightAdapter(ICLightConfig(width=512, height=384, device="cpu"))
+        with mock.patch.object(adapter, "_ensure_models") as load_models:
+            for size in ((512, 512), (384, 512), (511, 384), (512, 383)):
+                with self.subTest(size=size):
+                    with self.assertRaisesRegex(ValueError, "exactly match"):
+                        adapter.relight(Image.new("RGB", size), "full_scene")
+            load_models.assert_not_called()
+
+    def test_rectangle_output_must_match_config_exactly(self):
+        adapter = self._adapter_with_cpu_components(height=384)
+        source = Image.new("RGB", (512, 384))
+        with mock.patch.object(adapter, "_process", return_value=[np.zeros((512, 512, 3), dtype=np.uint8)]):
+            with self.assertRaisesRegex(ValueError, "output must be finite"):
+                adapter.relight(source, "full_scene")
+
+    def test_rectangle_full_scene_preserves_two_stage_geometry_and_settings_on_cpu(self):
+        adapter = self._adapter_with_cpu_components(height=384)
+        source = Image.new("RGB", (512, 384), (127, 127, 127))
+        original = source.tobytes()
+        with mock.patch.object(adapter, "_ensure_rmbg") as load_rmbg, \
+             mock.patch.object(adapter, "_run_rmbg") as run_rmbg, \
+             mock.patch.object(torch.cuda, "is_available", side_effect=AssertionError("CUDA queried")):
+            output = adapter.relight(source, "full_scene")
+        load_rmbg.assert_not_called()
+        run_rmbg.assert_not_called()
+        self.assertEqual(output.size, source.size)
+        self.assertEqual(output.mode, "RGB")
+        self.assertEqual(source.tobytes(), original)
+        self.assertEqual(len(adapter.vae.encoded), 3)
+        self.assertEqual(len(adapter.vae.decoded), 2)
+        initial = adapter.t2i_pipe.calls[0]
+        refinement = adapter.i2i_pipe.calls[0]
+        for call in (initial, refinement):
+            self.assertEqual((call["width"], call["height"]), (512, 384))
+            self.assertEqual(call["num_images_per_prompt"], 1)
+            self.assertEqual(call["guidance_scale"], 2.0)
+            self.assertEqual(call["generator"].initial_seed(), 12345)
+            self.assertEqual(tuple(call["cross_attention_kwargs"]["concat_conds"].shape), (1, 4, 48, 64))
+        self.assertIs(initial["generator"], refinement["generator"])
+        self.assertEqual(initial["num_inference_steps"], 25)
+        self.assertEqual(refinement["num_inference_steps"], 50)
+        self.assertEqual(refinement["strength"], 0.5)
+        for encoded in adapter.vae.encoded:
+            self.assertEqual(tuple(encoded.shape), (1, 3, 384, 512))
+
+    def test_official_same_geometry_conditioning_does_not_crop_rectangle(self):
+        image = np.zeros((384, 512, 3), dtype=np.uint8)
+        image[:, :64] = (255, 0, 0)
+        image[:, -64:] = (0, 255, 0)
+        actual = _resize_and_center_crop(image, 512, 384)
+        self.assertTrue(np.array_equal(actual, image))
 
 
 if __name__ == "__main__":

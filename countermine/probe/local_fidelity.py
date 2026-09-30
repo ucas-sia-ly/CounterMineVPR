@@ -1,8 +1,8 @@
 """Same-coordinate local-structure fidelity for canonical diagnostic probes.
 
 Metrics are pure NumPy and never register or warp either image. The model
-adapter imports the read-only vendored ALIKED/LightGlue lazily, preserving the
-512-pixel coordinate system by explicitly disabling extractor resizing.
+adapter imports the read-only vendored ALIKED/LightGlue lazily, preserving each
+image's canonical pixel coordinates by explicitly disabling extractor resizing.
 """
 
 from dataclasses import asdict, dataclass
@@ -23,6 +23,7 @@ CANONICAL_SIZE = 512
 GRID_SIZE = 8
 EPSILONS = (2, 4, 8, 16)
 METRIC_COLUMNS = (
+    "canonical_width", "canonical_height",
     "num_keypoints_source", "num_keypoints_relit", "num_matches", "match_ratio_min",
     *(f"good_matches_{eps}px" for eps in EPSILONS),
     *(f"repeatability_min_{eps}px" for eps in EPSILONS),
@@ -51,30 +52,42 @@ def _keypoint_count(value, name):
     return int(value)
 
 
-def _canonical_points(value, name):
+def _canonical_dimensions(width, height):
+    dimensions = []
+    for value, name in ((width, "canonical_width"), (height, "canonical_height")):
+        if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)) or value < 1:
+            raise ValueError(f"{name} must be a positive integer")
+        dimensions.append(int(value))
+    return tuple(dimensions)
+
+
+def _canonical_points(value, name, width=CANONICAL_SIZE, height=CANONICAL_SIZE):
     points = np.asarray(value, dtype=np.float64)
     if points.ndim != 2 or points.shape[1] != 2:
         raise ValueError(f"{name} must have shape (N, 2), including (0, 2) when empty")
     if not np.isfinite(points).all():
         raise ValueError(f"{name} must contain finite coordinates")
-    if np.any(points < 0) or np.any(points >= CANONICAL_SIZE):
-        raise ValueError(f"{name} must lie inside the canonical 512x512 image")
+    if np.any(points < 0) or np.any(points >= np.array([width, height])):
+        raise ValueError(f"{name} must lie inside the canonical {width}x{height} image")
     return points
 
 
 def compute_fidelity_metrics(
     points_source, points_relit, match_scores,
     num_keypoints_source, num_keypoints_relit,
+    *, canonical_width=CANONICAL_SIZE, canonical_height=CANONICAL_SIZE,
 ):
     """Measure matched displacement directly in canonical pixel coordinates.
 
     Epsilon thresholds are inclusive. All zero-denominator ratios are 0.0;
     statistics of empty displacement or confidence samples are ``None``.
     Quantiles use NumPy's linear interpolation. Coverage counts occupied cells
-    on the source side, with 64-pixel, half-open grid cells.
+    on the source side, with an 8x8 normalized, half-open grid over the canonical
+    width and height. The default square geometry preserves the Step 2C metrics.
     """
-    source = _canonical_points(points_source, "points_source")
-    relit = _canonical_points(points_relit, "points_relit")
+    width, height = _canonical_dimensions(canonical_width, canonical_height)
+    source = _canonical_points(points_source, "points_source", width, height)
+    relit = _canonical_points(points_relit, "points_relit", width, height)
     if source.shape != relit.shape:
         raise ValueError("Source and relit matched points must have equal shapes")
     scores = np.asarray(match_scores, dtype=np.float64)
@@ -88,6 +101,8 @@ def compute_fidelity_metrics(
         raise ValueError("num_matches cannot exceed either keypoint count")
     displacement = np.linalg.norm(source - relit, axis=1)
     result = {
+        "canonical_width": width,
+        "canonical_height": height,
         "num_keypoints_source": n_source,
         "num_keypoints_relit": n_relit,
         "num_matches": n_matches,
@@ -111,7 +126,7 @@ def compute_fidelity_metrics(
     })
     for eps in (4, 8):
         good_source = source[displacement <= eps]
-        cells = np.floor(good_source / (CANONICAL_SIZE / GRID_SIZE)).astype(np.int64)
+        cells = np.floor(good_source * GRID_SIZE / np.array([width, height])).astype(np.int64)
         occupied = int(len(np.unique(cells, axis=0)))
         result[f"occupied_grid_cells_{eps}px"] = occupied
         result[f"grid_coverage_{eps}px"] = float(occupied / GRID_SIZE**2)
@@ -144,6 +159,8 @@ class MatchResult:
     points_source: np.ndarray
     points_relit: np.ndarray
     match_scores: np.ndarray
+    canonical_width: int = CANONICAL_SIZE
+    canonical_height: int = CANONICAL_SIZE
 
     @property
     def displacements(self):
@@ -272,28 +289,42 @@ class LocalFidelityMatcher:
         if path.suffix.lower() != ".png":
             raise ValueError(f"Canonical fidelity probes must use PNG, got {path}")
         with Image.open(path) as image:
-            if image.format != "PNG" or image.mode != "RGB" or image.size != (512, 512):
-                raise ValueError(f"Expected RGB PNG exactly 512x512, got {path}: {image.format}, {image.mode}, {image.size}")
+            if image.format != "PNG" or image.mode != "RGB":
+                raise ValueError(f"Expected canonical RGB PNG, got {path}: {image.format}, {image.mode}, {image.size}")
+            width, height = _canonical_dimensions(*image.size)
             pixels = np.array(image, dtype=np.float32, copy=True) / 255.0
         self._ensure_models()
         torch = self._torch
         image_tensor = torch.from_numpy(pixels.transpose(2, 0, 1).copy()).to(self.device)
-        if tuple(image_tensor.shape) != (3, 512, 512):
-            raise ValueError("Fidelity extraction requires tensor shape [3,512,512]")
+        if tuple(image_tensor.shape) != (3, height, width):
+            raise ValueError(f"Fidelity extraction requires tensor shape [3,{height},{width}]")
         with torch.inference_mode():
             features = self.extractor.extract(image_tensor, resize=None)
         keypoints = features["keypoints"]
         if keypoints.ndim != 3 or keypoints.shape[0] != 1 or keypoints.shape[2] != 2:
             raise ValueError("ALIKED must return batched keypoints with shape [1,N,2]")
-        _canonical_points(keypoints[0].detach().cpu().numpy(), "extracted keypoints")
+        _canonical_points(keypoints[0].detach().cpu().numpy(), "extracted keypoints", width, height)
         if "image_size" not in features or not torch.equal(
-            features["image_size"], torch.tensor([[512, 512]], device=self.device).to(features["image_size"]),
+            features["image_size"], torch.tensor([[width, height]], device=self.device).to(features["image_size"]),
         ):
-            raise ValueError("ALIKED features must retain canonical image_size [512,512]")
+            raise ValueError(f"ALIKED features must retain canonical image_size [{width},{height}]")
         return features
+
+    @staticmethod
+    def _feature_dimensions(features):
+        image_size = features.get("image_size")
+        if image_size is None or tuple(image_size.shape) != (1, 2):
+            raise ValueError("Matching requires canonical image_size with shape [1,2]")
+        size = image_size.detach().cpu().numpy()
+        if not np.isfinite(size).all() or np.any(size != np.floor(size)):
+            raise ValueError("Matching image_size must contain finite integer dimensions")
+        return _canonical_dimensions(int(size[0, 0]), int(size[0, 1]))
 
     def match(self, features_source, features_relit):
         """Return matched CPU coordinates and confidences without registration."""
+        width, height = self._feature_dimensions(features_source)
+        if self._feature_dimensions(features_relit) != (width, height):
+            raise ValueError("Source and relit canonical dimensions must be identical")
         self._ensure_models()
         torch = self._torch
         source = features_source["keypoints"]
@@ -301,9 +332,12 @@ class LocalFidelityMatcher:
         for keypoints in (source, relit):
             if keypoints.ndim != 3 or keypoints.shape[0] != 1 or keypoints.shape[2] != 2:
                 raise ValueError("Matching requires batched keypoints with shape [1,N,2]")
+            _canonical_points(keypoints[0].detach().cpu().numpy(), "matched keypoints", width, height)
         n_source, n_relit = int(source.shape[1]), int(relit.shape[1])
         if min(n_source, n_relit) == 0:
-            return MatchResult(n_source, n_relit, np.empty((0, 2)), np.empty((0, 2)), np.empty(0))
+            return MatchResult(
+                n_source, n_relit, np.empty((0, 2)), np.empty((0, 2)), np.empty(0), width, height,
+            )
         with torch.inference_mode():
             prediction = self.matcher({"image0": features_source, "image1": features_relit})
             matches = prediction["matches"][0]
@@ -322,10 +356,12 @@ class LocalFidelityMatcher:
                 source[0, matches[:, 0]].detach().cpu().numpy().copy(),
                 relit[0, matches[:, 1]].detach().cpu().numpy().copy(),
                 scores.detach().cpu().numpy().copy(),
+                width, height,
             )
         compute_fidelity_metrics(
             result.points_source, result.points_relit, result.match_scores,
             result.num_keypoints_source, result.num_keypoints_relit,
+            canonical_width=width, canonical_height=height,
         )
         return result
 
@@ -334,12 +370,15 @@ class LocalFidelityMatcher:
         return {
             "config": asdict(self.config),
             "resolved_device": str(self.device) if self.device is not None else None,
-            "canonical_size": [512, 512],
+            "canonical_size": None,
+            "default_canonical_size": [CANONICAL_SIZE, CANONICAL_SIZE],
+            "canonical_geometry": "per-pair image dimensions; source and relit must be identical",
             "extract_resize": None,
             "compiled": False,
             "epsilon_pixels": list(EPSILONS),
             "epsilon_comparison": "inclusive <=",
             "grid_shape": [GRID_SIZE, GRID_SIZE],
+            "grid_coordinates": "normalized over canonical width and height",
             "quantile_method": "linear",
             "registration": None,
             "extractor_settings": {"max_num_keypoints": self.config.max_keypoints, **_EXTRACTOR_SETTINGS},

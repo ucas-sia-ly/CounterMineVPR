@@ -164,6 +164,73 @@ class FidelityMetricsTest(unittest.TestCase):
         self.assertEqual(matches.displacements.dtype, np.float64)
         self.assertEqual(float(matches.displacements[0]), metrics["displacement_mean"])
 
+    def test_square_default_is_exactly_equal_to_explicit_geometry(self):
+        source = np.array([[63.5, 63.5], [64, 64], [511.9, 511.9]])
+        relit = source - 2
+        scores = np.full(len(source), 0.75)
+        default = compute_fidelity_metrics(source, relit, scores, 5, 3)
+        explicit = compute_fidelity_metrics(
+            source, relit, scores, 5, 3, canonical_width=512, canonical_height=512,
+        )
+        self.assertEqual(default, explicit)
+        self.assertEqual(default["canonical_width"], 512)
+        self.assertEqual(default["canonical_height"], 512)
+
+    def test_rectangular_coordinates_use_separate_width_and_height(self):
+        source = np.array([[511.9, 383.9]])
+        result = compute_fidelity_metrics(
+            source, source, [0.75], 1, 1, canonical_width=512, canonical_height=384,
+        )
+        self.assertEqual(result["canonical_width"], 512)
+        self.assertEqual(result["canonical_height"], 384)
+        self.assertEqual(result["displacement_q95"], 0.0)
+        for points in ([[512, 10]], [[10, 384]], [[-0.01, 0]], [[0, -0.01]]):
+            for invalid_side in ("source", "relit"):
+                with self.subTest(points=points, invalid_side=invalid_side):
+                    with self.assertRaisesRegex(ValueError, "512x384"):
+                        compute_fidelity_metrics(
+                            points if invalid_side == "source" else [[10, 10]],
+                            points if invalid_side == "relit" else [[10, 10]],
+                            [0.75], 1, 1, canonical_width=512, canonical_height=384,
+                        )
+
+    def test_normalized_rectangular_grid_covers_all_64_cells(self):
+        source = np.array([[x * 64 + 32, y * 48 + 24] for y in range(8) for x in range(8)])
+        result = compute_fidelity_metrics(
+            source, source, np.ones(64), 64, 64, canonical_width=512, canonical_height=384,
+        )
+        for eps in (4, 8):
+            self.assertEqual(result[f"occupied_grid_cells_{eps}px"], 64)
+            self.assertEqual(result[f"grid_coverage_{eps}px"], 1.0)
+
+    def test_rectangular_grid_boundaries_use_48_pixel_height_cells(self):
+        source = np.array([[1, 47.9], [1, 48], [1, 48.1], [511.9, 383.9]])
+        result = compute_fidelity_metrics(
+            source, source, np.ones(4), 4, 4, canonical_width=512, canonical_height=384,
+        )
+        self.assertEqual(result["occupied_grid_cells_8px"], 3)
+        self.assertEqual(result["grid_coverage_8px"], 3 / 64)
+
+    def test_geometry_does_not_change_pixel_displacement_thresholds(self):
+        source = np.array([[32, 24], [100, 100]])
+        relit = source + np.array([[3, 4], [0, 8]])
+        args = (source, relit, [0.5, 0.75], 2, 2)
+        square = compute_fidelity_metrics(*args)
+        rectangular = compute_fidelity_metrics(*args, canonical_width=512, canonical_height=384)
+        for key in square:
+            if key.startswith(("displacement_", "repeatability_", "precision_", "good_matches_")):
+                self.assertEqual(square[key], rectangular[key])
+        self.assertEqual(rectangular["displacement_median"], 6.5)
+
+    def test_invalid_dimensions_are_rejected_even_with_empty_matches(self):
+        for dimension in (0, -1, 384.0, True, float("nan"), float("inf"), "384"):
+            for keyword in ("canonical_width", "canonical_height"):
+                with self.subTest(dimension=dimension, keyword=keyword):
+                    with self.assertRaises(ValueError):
+                        compute_fidelity_metrics(
+                            np.empty((0, 2)), np.empty((0, 2)), [], 0, 0, **{keyword: dimension},
+                        )
+
 
 class _FakeALIKED:
     checkpoint_url = "https://example.invalid/{}.pth"
@@ -189,7 +256,7 @@ class _FakeALIKED:
         return {
             "keypoints": torch.tensor([[[10.0, 20.0], [100.0, 120.0]]]),
             "descriptors": torch.zeros((1, 2, 128)),
-            "image_size": torch.tensor([[512.0, 512.0]]),
+            "image_size": torch.tensor([[float(image.shape[2]), float(image.shape[1])]]),
         }
 
 
@@ -305,7 +372,6 @@ json.dumps(metadata, allow_nan=False)
                 ("hidden_jpeg.png", "RGB", (512, 512), "JPEG"),
                 ("gray.png", "L", (512, 512), "PNG"),
                 ("alpha.png", "RGBA", (512, 512), "PNG"),
-                ("wrong.png", "RGB", (513, 512), "PNG"),
             )
             adapter = LocalFidelityMatcher()
             with mock.patch.object(adapter, "_ensure_models") as load:
@@ -332,11 +398,67 @@ json.dumps(metadata, allow_nan=False)
                         with self.assertRaises(ValueError):
                             adapter.extract(source)
 
+    def test_rectangular_png_extract_preserves_geometry_and_resize_none(self):
+        with TemporaryDirectory() as temporary:
+            adapter = self.fake_adapter(temporary)
+            source = Path(temporary) / "source.png"
+            Image.new("RGB", (512, 384), (0, 127, 255)).save(source)
+            features = adapter.extract(source)
+            image, kwargs = adapter.extractor.extraction_calls[-1]
+            self.assertEqual(tuple(image.shape), (3, 384, 512))
+            self.assertEqual(kwargs, {"resize": None})
+            torch.testing.assert_close(features["image_size"], torch.tensor([[512.0, 384.0]]))
+            result = adapter.match(features, features)
+            self.assertEqual((result.canonical_width, result.canonical_height), (512, 384))
+
+    def test_rectangular_extract_rejects_square_metadata_and_outside_keypoints(self):
+        with TemporaryDirectory() as temporary:
+            adapter = self.fake_adapter(temporary)
+            source = Path(temporary) / "source.png"
+            Image.new("RGB", (512, 384)).save(source)
+            for features in (
+                {"keypoints": torch.tensor([[[10, 20]]]), "image_size": torch.tensor([[512, 512]])},
+                {"keypoints": torch.tensor([[[10, 384]]]), "image_size": torch.tensor([[512, 384]])},
+                {"keypoints": torch.tensor([[[512, 20]]]), "image_size": torch.tensor([[512, 384]])},
+            ):
+                with self.subTest(features=features):
+                    with mock.patch.object(adapter.extractor, "extract", return_value=features):
+                        with self.assertRaises(ValueError):
+                            adapter.extract(source)
+
+    def test_pair_geometry_mismatch_fails_before_model_loading(self):
+        adapter = LocalFidelityMatcher()
+        source = {"keypoints": torch.empty((1, 0, 2)), "image_size": torch.tensor([[512, 512]])}
+        relit = {"keypoints": torch.empty((1, 0, 2)), "image_size": torch.tensor([[512, 384]])}
+        with mock.patch.object(adapter, "_ensure_models") as load:
+            with self.assertRaisesRegex(ValueError, "dimensions must be identical"):
+                adapter.match(source, relit)
+        load.assert_not_called()
+
+    def test_missing_or_invalid_pair_geometry_fails_before_loading(self):
+        adapter = LocalFidelityMatcher()
+        for image_size in (None, torch.tensor([512, 384]), torch.tensor([[512.5, 384]]), torch.tensor([[512, float("inf")]]), torch.tensor([[512, 0]])):
+            features = {"keypoints": torch.empty((1, 0, 2))}
+            if image_size is not None:
+                features["image_size"] = image_size
+            with self.subTest(image_size=image_size), mock.patch.object(adapter, "_ensure_models") as load:
+                with self.assertRaises(ValueError):
+                    adapter.match(features, features)
+            load.assert_not_called()
+
+    def test_empty_rectangular_extraction_keeps_pair_geometry(self):
+        with TemporaryDirectory() as temporary:
+            adapter = self.fake_adapter(temporary)
+            features = {"keypoints": torch.empty((1, 0, 2)), "image_size": torch.tensor([[512, 384]])}
+            result = adapter.match(features, features)
+            self.assertEqual((result.canonical_width, result.canonical_height), (512, 384))
+            self.assertEqual(adapter.matcher.calls, [])
+
     def test_match_extracts_matched_indices_scores_into_numpy(self):
         with TemporaryDirectory() as temporary:
             adapter = self.fake_adapter(temporary)
-            source = {"keypoints": torch.tensor([[[10.0, 20.0], [100.0, 120.0]]])}
-            relit = {"keypoints": torch.tensor([[[103.0, 120.0], [10.0, 24.0]]])}
+            source = {"keypoints": torch.tensor([[[10.0, 20.0], [100.0, 120.0]]]), "image_size": torch.tensor([[512, 512]])}
+            relit = {"keypoints": torch.tensor([[[103.0, 120.0], [10.0, 24.0]]]), "image_size": torch.tensor([[512, 512]])}
             result = adapter.match(source, relit)
             self.assertIsInstance(result, MatchResult)
             self.assertEqual(result.num_keypoints_source, 2)
@@ -355,8 +477,8 @@ json.dumps(metadata, allow_nan=False)
     def test_empty_extraction_skips_matcher_and_returns_shaped_arrays(self):
         with TemporaryDirectory() as temporary:
             adapter = self.fake_adapter(temporary)
-            empty = {"keypoints": torch.empty((1, 0, 2))}
-            other = {"keypoints": torch.tensor([[[10.0, 20.0]]])}
+            empty = {"keypoints": torch.empty((1, 0, 2)), "image_size": torch.tensor([[512, 512]])}
+            other = {"keypoints": torch.tensor([[[10.0, 20.0]]]), "image_size": torch.tensor([[512, 512]])}
             result = adapter.match(empty, other)
             self.assertEqual(result.points_source.shape, (0, 2))
             self.assertEqual(result.points_relit.shape, (0, 2))
@@ -368,7 +490,7 @@ json.dumps(metadata, allow_nan=False)
         with TemporaryDirectory() as temporary:
             adapter = self.fake_adapter(temporary)
             adapter.matcher.prediction = {"matches": [torch.empty((0, 2), dtype=torch.int64)], "scores": [torch.empty(0)]}
-            features = {"keypoints": torch.tensor([[[10.0, 20.0]]])}
+            features = {"keypoints": torch.tensor([[[10.0, 20.0]]]), "image_size": torch.tensor([[512, 512]])}
             result = adapter.match(features, features)
             self.assertEqual(result.points_source.shape, (0, 2))
             self.assertEqual(result.num_keypoints_source, 1)
@@ -376,7 +498,7 @@ json.dumps(metadata, allow_nan=False)
     def test_invalid_match_indices_fail_instead_of_misreporting_coordinates(self):
         with TemporaryDirectory() as temporary:
             adapter = self.fake_adapter(temporary)
-            features = {"keypoints": torch.tensor([[[10.0, 20.0]]])}
+            features = {"keypoints": torch.tensor([[[10.0, 20.0]]]), "image_size": torch.tensor([[512, 512]])}
             for matches in (torch.tensor([[-1, 0]]), torch.tensor([[0, 1]]), torch.tensor([[0.0, 0.0]])):
                 adapter.matcher.prediction = {"matches": [matches], "scores": [torch.tensor([0.5])]}
                 with self.subTest(matches=matches):
