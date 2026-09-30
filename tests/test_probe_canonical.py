@@ -32,6 +32,8 @@ class ProbeCanonicalTest(unittest.TestCase):
             "crop_left": 256,
             "crop_top": 0,
             "crop_size": 512,
+            "crop_long_axis_fraction": 0.5,
+            "crop_area_fraction": 0.5,
             "output_width": 512,
             "output_height": 512,
         })
@@ -57,6 +59,16 @@ class ProbeCanonicalTest(unittest.TestCase):
         expected = Image.new("RGB", (512, 512), "blue")
         ImageDraw.Draw(expected).rectangle((0, 0, 511, 255), fill="red")
         self.assertEqual(result.tobytes(), expected.tobytes())
+
+    def test_crop_retention_fractions_for_square_wide_tall_and_odd_dimensions(self) -> None:
+        for size in [(512, 512), (1024, 512), (512, 1024), (13, 9), (9, 13)]:
+            with self.subTest(size=size):
+                width, height = size
+                crop_size = min(size)
+                result, metadata = canonicalize_probe(Image.new("RGB", size))
+                self.addCleanup(result.close)
+                self.assertEqual(metadata["crop_long_axis_fraction"], crop_size / max(size))
+                self.assertEqual(metadata["crop_area_fraction"], crop_size ** 2 / (width * height))
 
     def test_square_image_is_unchanged_before_resize(self) -> None:
         image = Image.new("RGB", (512, 512), "blue")

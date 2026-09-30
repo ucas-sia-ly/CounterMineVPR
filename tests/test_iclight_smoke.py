@@ -31,8 +31,17 @@ AUDIT_COLUMNS = [
     "audit_index", "group", "row_index", "image_id", "relative_path",
     "place_uid", "city_id", "source_512_path", "original_width",
     "original_height", "crop_left", "crop_top", "crop_size",
+    "crop_long_axis_fraction", "crop_area_fraction",
 ]
 MODES = ("official_rmbg", "full_scene")
+ALPHA_STATS = {
+    "alpha_mean": 0.75,
+    "alpha_q05": 0.1,
+    "alpha_q50": 0.85,
+    "alpha_q95": 1.0,
+    "alpha_fraction_lt_0_5": 0.2,
+    "alpha_fraction_gt_0_9": 0.4,
+}
 
 
 def sha256(path):
@@ -56,7 +65,11 @@ class FakeAdapter:
             "image_mode": image.mode,
             "source_bytes": image.tobytes(),
         })
-        self.last_run_stats = {"peak_cuda_memory_bytes": None}
+        self.last_run_stats = {
+            "peak_cuda_memory_bytes": None,
+            **{key: value if mode == "official_rmbg" else None
+               for key, value in ALPHA_STATS.items()},
+        }
         if len(self.calls) == self.fail_on_call:
             return self.bad_output
         # Distinct colors make accidental reuse of one mode's output detectable.
@@ -81,7 +94,7 @@ class ICLightSmokeTests(unittest.TestCase):
         self.rows = []
         for audit_index in range(12):
             row_index = 1200 + audit_index * 7
-            source_path = self.sources_dir / f"{row_index:08d}.jpg"
+            source_path = self.sources_dir / f"{row_index:08d}.png"
             with Image.new("RGB", (512, 512),
                            (audit_index * 10, audit_index * 7, audit_index * 3)) as image:
                 image.save(source_path)
@@ -99,6 +112,8 @@ class ICLightSmokeTests(unittest.TestCase):
                 "crop_left": 100,
                 "crop_top": 0,
                 "crop_size": 600,
+                "crop_long_axis_fraction": 0.75,
+                "crop_area_fraction": 0.75,
             })
         self.write_manifest()
         self.calls = []
@@ -148,11 +163,13 @@ class ICLightSmokeTests(unittest.TestCase):
         )
 
     def test_smoke_writes_both_modes_exact_csv_config_and_readable_contact_sheet(self):
-        source_hashes = {path: sha256(path) for path in self.sources_dir.glob("*.jpg")}
+        source_hashes = {path: sha256(path) for path in self.sources_dir.glob("*.png")}
         config = ICLightConfig()
         report = self.run_smoke(config=config)
         self.assertEqual(report["number_of_sources"], 10)
         self.assertEqual(report["count_outputs"], 20)
+        self.assertEqual(report["probe_image_format"], "PNG")
+        self.assertEqual(report["probe_image_encoding"], "lossless")
         # JSON-normalize to allow dataclass Path fields while checking all settings.
         self.assertEqual(report["config"],
                          json.loads(json.dumps(asdict(config), default=str)))
@@ -182,7 +199,7 @@ class ICLightSmokeTests(unittest.TestCase):
             self.assertEqual(int(row["row_index"]), source_row["row_index"])
             self.assertEqual(row["source_512_path"], source_row["source_512_path"])
             output_path = self.output_dir / "relit" / row["mode"] / (
-                f'{source_row["row_index"]:08d}.jpg'
+                f'{source_row["row_index"]:08d}.png'
             )
             self.assertFalse(Path(row["output_path"]).is_absolute())
             self.assertEqual(row["output_path"], os.path.relpath(output_path, Path.cwd()))
@@ -195,6 +212,7 @@ class ICLightSmokeTests(unittest.TestCase):
             self.assertEqual(float(row["highres_scale"]), 1.0)
             self.assertGreaterEqual(float(row["elapsed_seconds"]), 0)
             with Image.open(output_path) as image:
+                self.assertEqual(image.format, "PNG")
                 image.verify()
             with Image.open(output_path) as image:
                 image.load()
@@ -202,9 +220,7 @@ class ICLightSmokeTests(unittest.TestCase):
                 self.assertEqual(image.mode, "RGB")
                 expected = ((130, 145, 160) if row["mode"] == "official_rmbg"
                             else (150, 160, 170))
-                self.assertTrue(all(abs(actual - reference) <= 2
-                                    for actual, reference in
-                                    zip(image.getpixel((256, 256)), expected)))
+                self.assertEqual(image.tobytes(), bytes(expected) * (512 * 512))
 
         self.assertEqual(source_hashes, {path: sha256(path) for path in source_hashes})
         with Image.open(self.contact_sheet_path) as contact_sheet:
@@ -218,6 +234,55 @@ class ICLightSmokeTests(unittest.TestCase):
             (self.output_dir / "iclight_smoke_summary.json").read_text(encoding="utf-8")
         )
         self.assertEqual(saved_report, report)
+        for run in saved_report["runs"]:
+            expected_alpha = {
+                key: value if run["mode"] == "official_rmbg" else None
+                for key, value in ALPHA_STATS.items()
+            }
+            self.assertEqual({key: run["adapter_stats"][key] for key in ALPHA_STATS},
+                             expected_alpha)
+        self.assertFalse(list((self.output_dir / "relit").rglob("*.jpg")))
+
+    def test_legacy_jpeg_manifest_references_are_rejected_even_after_selected_rows(self):
+        for index in (0, 11):
+            with self.subTest(index=index):
+                legacy = [dict(row) for row in self.rows]
+                legacy[index]["source_512_path"] = str(
+                    Path(legacy[index]["source_512_path"]).with_suffix(".jpg")
+                )
+                self.write_manifest(legacy)
+                with self.assertRaisesRegex(ValueError, "lossless .png.*rebuild"):
+                    self.run_smoke()
+                self.assertEqual(self.factory_configs, [])
+
+    def test_jpeg_data_renamed_png_is_rejected_before_adapter_creation(self):
+        source_path = Path(self.rows[0]["source_512_path"])
+        with Image.new("RGB", (512, 512), (10, 20, 30)) as image:
+            image.save(source_path, format="JPEG")
+        with self.assertRaisesRegex(ValueError, "not encoded as PNG"):
+            self.run_smoke()
+        self.assertEqual(self.factory_configs, [])
+
+    def test_jpeg_alongside_png_sources_is_rejected_before_adapter_creation(self):
+        legacy_path = self.sources_dir / "old_source.JPEG"
+        with Image.new("RGB", (512, 512)) as image:
+            image.save(legacy_path, format="JPEG")
+        with self.assertRaisesRegex(ValueError, "legacy JPEG canonical sources"):
+            self.run_smoke()
+        self.assertEqual(self.factory_configs, [])
+
+    def test_successful_smoke_replaces_legacy_relit_directories_with_only_png(self):
+        for mode in MODES:
+            directory = self.output_dir / "relit" / mode
+            directory.mkdir(parents=True)
+            with Image.new("RGB", (512, 512)) as image:
+                image.save(directory / "legacy.jpg")
+        self.run_smoke(count=1)
+        for mode in MODES:
+            self.assertEqual(
+                {path.name for path in (self.output_dir / "relit" / mode).iterdir()},
+                {f'{self.rows[0]["row_index"]:08d}.png'},
+            )
 
     def test_invalid_counts_are_rejected_before_adapter_creation(self):
         for count in (0, -1, 11, 100):
@@ -312,6 +377,21 @@ class ICLightSmokeTests(unittest.TestCase):
         with mock.patch.object(Image.Image, "save", new=corrupt_relit_save):
             with self.assertRaises((ValueError, OSError)):
                 self.run_smoke()
+        self.assertEqual(previous_hashes, self.published_hashes())
+
+    def test_saved_jpeg_output_is_rejected_and_previous_outputs_preserved(self):
+        self.run_smoke(count=1)
+        previous_hashes = self.published_hashes()
+        original_save = Image.Image.save
+
+        def jpeg_relit_save(image, path, *args, **kwargs):
+            if isinstance(path, (str, os.PathLike)) and "relit" in Path(path).parts:
+                return original_save(image, path, format="JPEG")
+            return original_save(image, path, *args, **kwargs)
+
+        with mock.patch.object(Image.Image, "save", new=jpeg_relit_save):
+            with self.assertRaisesRegex(ValueError, "not encoded as PNG"):
+                self.run_smoke(count=1)
         self.assertEqual(previous_hashes, self.published_hashes())
 
 

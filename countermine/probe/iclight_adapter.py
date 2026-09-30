@@ -23,6 +23,10 @@ IC_LIGHT_PROMPT = (
     "soft diffuse overcast daylight, uniform outdoor illumination, natural lighting"
 )
 MODES = ("official_rmbg", "full_scene")
+ALPHA_STAT_KEYS = (
+    "alpha_mean", "alpha_q05", "alpha_q50", "alpha_q95",
+    "alpha_fraction_lt_0_5", "alpha_fraction_gt_0_9",
+)
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -107,6 +111,26 @@ class ICLightConfig:
         for name, official_value in official_settings.items():
             if getattr(self, name) != official_value:
                 raise ValueError(f"The audit preserves IC-Light's official {name}={official_value!r}")
+
+
+def alpha_statistics(alpha):
+    """Summarize normalized RMBG alpha pixels without changing or saving them."""
+    values = np.asarray(alpha)
+    if not values.size:
+        raise ValueError("Alpha statistics require a nonempty array")
+    if not np.isfinite(values).all():
+        raise ValueError("Alpha statistics require finite values")
+    if np.any(values < 0) or np.any(values > 1):
+        raise ValueError("Alpha statistics require values in [0, 1]")
+    q05, q50, q95 = np.quantile(values, (0.05, 0.50, 0.95))
+    return {
+        "alpha_mean": float(np.mean(values)),
+        "alpha_q05": float(q05),
+        "alpha_q50": float(q50),
+        "alpha_q95": float(q95),
+        "alpha_fraction_lt_0_5": float(np.mean(values < 0.5)),
+        "alpha_fraction_gt_0_9": float(np.mean(values > 0.9)),
+    }
 
 
 def _numpy_to_tensor(images):
@@ -232,7 +256,8 @@ class ICLightAdapter:
     the unchanged Bria architecture and follows ``process_relight``'s alpha
     blending onto gray 127. ``last_run_stats`` reports elapsed wall time and,
     on CUDA, peak allocated/reserved bytes for the completed call, including
-    lazy loading on the first invocation.
+    lazy loading on the first invocation. It also reports scalar statistics of
+    the actual resized, clipped conditioning alpha; full-scene values are null.
     """
 
     def __init__(self, config: ICLightConfig = ICLightConfig()):
@@ -343,6 +368,7 @@ class ICLightAdapter:
             if not np.isfinite(alpha).all():
                 raise ValueError("RMBG produced non-finite alpha values")
             alpha = alpha.clip(0, 1)
+            self.last_run_stats.update(alpha_statistics(alpha))
             foreground = 127 + (image.astype(np.float32) - 127 + self.config.rmbg_sigma) * alpha
             return foreground.clip(0, 255).astype(np.uint8)
 
@@ -422,7 +448,7 @@ class ICLightAdapter:
             raise ValueError(f"Unknown preprocessing mode {mode!r}; expected one of {MODES}")
         import torch
 
-        self.last_run_stats = {}
+        self.last_run_stats = dict.fromkeys(ALPHA_STAT_KEYS)
         start = time.perf_counter()
         # This copies the pixels even if future conditioning code edits its array.
         foreground = np.array(image, dtype=np.uint8, copy=True)
@@ -447,11 +473,11 @@ class ICLightAdapter:
         assert output.size == (512, 512) and output.mode == "RGB"
         if cuda:
             torch.cuda.synchronize(run_device)
-        self.last_run_stats = {
+        self.last_run_stats.update({
             "elapsed_seconds": time.perf_counter() - start,
             "peak_cuda_memory_allocated_bytes": (
                 int(torch.cuda.max_memory_allocated(run_device)) if cuda else None),
             "peak_cuda_memory_reserved_bytes": (
                 int(torch.cuda.max_memory_reserved(run_device)) if cuda else None),
-        }
+        })
         return output

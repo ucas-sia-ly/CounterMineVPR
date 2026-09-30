@@ -39,9 +39,26 @@ checkpoint can be supplied with `--checkpoint-path`; `--cache-dir` selects a
 cache outside `third_party/`, and `--local-files-only` disables downloads.
 `--count` allows 1 through 10 sources. Larger audits are disabled for this step.
 
-Completed runs publish:
+Canonical audit sources are built separately with:
 
-- `cache/generator_audit/relit/official_rmbg/` and `relit/full_scene/`.
+```bash
+python tools/07_build_generator_audit_set.py
+```
+
+They are lossless PNGs at
+`cache/generator_audit/source_512/<row_index>.png`, using the existing eight-digit
+row-index filename. Preprocessing still center-crops to a square and resizes to
+512x512. The audit manifest records `crop_long_axis_fraction = crop_size /
+max(original_width, original_height)` and `crop_area_fraction = crop_size**2 /
+(original_width * original_height)`. The audit summary has top-level
+`crop_long_axis_fraction` and `crop_area_fraction` objects with min, median, q05,
+q25, q75, and q95 for each fraction. These are retention diagnostics; they do not
+change the crop policy.
+
+Completed smoke runs publish:
+
+- Lossless PNGs at `cache/generator_audit/relit/official_rmbg/<row_index>.png`
+  and `cache/generator_audit/relit/full_scene/<row_index>.png`.
 - `cache/generator_audit/iclight_smoke.csv`, with the requested inference fields.
 - `cache/generator_audit/iclight_smoke_summary.json`, with all configuration,
   source/output hashes, timing, and peak CUDA memory statistics.
@@ -51,5 +68,23 @@ Source/output references use paths relative to the invocation working directory.
 Every source and output is checked for RGB mode, exact resolution, finite pixels,
 and successful file decoding. Publishing waits for the entire smoke run and
 contact sheet to pass these checks; a failed run preserves previous artifacts.
+Legacy JPEG source references, disguised JPEG content, and coexistence of JPEGs
+with PNGs in `source_512` are rejected before model loading. Rebuild the canonical
+source set and explicitly rerun the smoke command before quantitative fidelity
+measurement. A successful rerun replaces both relit mode directories with PNGs.
+The PNG change does not change the inference settings described above.
+
+For each `official_rmbg` result, the smoke summary's `runs` entries record scalar
+diagnostics from the alpha used for composition: `alpha_mean`, `alpha_q05`,
+`alpha_q50`, `alpha_q95`, `alpha_fraction_lt_0_5`, and
+`alpha_fraction_gt_0_9`. Each field is null for `full_scene`. RMBG behavior is
+unchanged, and full alpha masks are not saved.
+
+The existing ten-image qualitative audit figure is preserved at
+[docs/audits/step2_iclight_smoke_10.jpg](audits/step2_iclight_smoke_10.jpg).
+It documents the completed JPEG-era audit, not a newly generated PNG run.
+New contact sheets still use the ignored `outputs/step2/iclight_smoke_10.jpg`
+path and may remain JPEG because they are for visual inspection.
+
 File validity does not establish structural fidelity or a preferred mode.
 Review the ten-source contact sheet before proceeding to any larger audit.

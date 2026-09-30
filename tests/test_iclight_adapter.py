@@ -15,12 +15,14 @@ from PIL import Image
 import torch
 
 from countermine.probe.iclight_adapter import (
+    ALPHA_STAT_KEYS,
     ICLightAdapter,
     ICLightConfig,
     _apply_offset,
     _configure_unet,
     _numpy_to_tensor,
     _tensor_to_numpy,
+    alpha_statistics,
 )
 
 
@@ -249,6 +251,37 @@ adapter = ICLightAdapter()
         torch.testing.assert_close(
             feed[0, :, 0, 0], torch.tensor([-1.0, 0.0, 255.0 / 127.0 - 1.0]),
         )
+        self.assertEqual(adapter.last_run_stats, {
+            "alpha_mean": 0.25, "alpha_q05": 0.25, "alpha_q50": 0.25,
+            "alpha_q95": 0.25, "alpha_fraction_lt_0_5": 1.0,
+            "alpha_fraction_gt_0_9": 0.0,
+        })
+
+    def test_alpha_statistics_summarize_pixels_and_use_strict_thresholds(self):
+        alpha = np.array([[0.0, 0.25, 0.5, 0.9, 1.0]])
+        original = alpha.copy()
+        stats = alpha_statistics(alpha)
+        self.assertEqual(set(stats), set(ALPHA_STAT_KEYS))
+        expected = {
+            "alpha_mean": 0.53, "alpha_q05": 0.05, "alpha_q50": 0.5,
+            "alpha_q95": 0.98, "alpha_fraction_lt_0_5": 0.4,
+            "alpha_fraction_gt_0_9": 0.2,
+        }
+        for key, value in expected.items():
+            with self.subTest(key=key):
+                self.assertAlmostEqual(stats[key], value)
+                self.assertIsInstance(stats[key], float)
+        self.assertTrue(np.array_equal(alpha, original))
+        json.dumps(stats, allow_nan=False)
+
+    def test_alpha_statistics_reject_empty_nonfinite_or_unnormalized_values(self):
+        for alpha in (
+            np.array([]), np.array([float("nan")]), np.array([float("inf")]),
+            np.array([-0.01]), np.array([1.01]),
+        ):
+            with self.subTest(alpha=alpha):
+                with self.assertRaises(ValueError):
+                    alpha_statistics(alpha)
 
     def test_official_rmbg_rejects_nonfinite_alpha_before_compositing(self):
         adapter = ICLightAdapter(ICLightConfig(device="cpu"))
@@ -311,6 +344,29 @@ adapter = ICLightAdapter()
         self.assertGreaterEqual(adapter.last_run_stats["elapsed_seconds"], 0.0)
         self.assertIsNone(adapter.last_run_stats["peak_cuda_memory_allocated_bytes"])
         self.assertIsNone(adapter.last_run_stats["peak_cuda_memory_reserved_bytes"])
+        for key in ALPHA_STAT_KEYS:
+            with self.subTest(key=key):
+                self.assertIn(key, adapter.last_run_stats)
+                self.assertIsNone(adapter.last_run_stats[key])
+
+    def test_official_mode_records_alpha_statistics_and_full_scene_clears_them(self):
+        adapter = self._adapter_with_cpu_components()
+        adapter.rmbg = _FakeRMBG(0.25)
+        source = Image.new("RGB", (512, 512), (7, 40, 220))
+        output = np.full((512, 512, 3), 127, dtype=np.uint8)
+        with mock.patch.object(adapter, "_process", return_value=[output]):
+            adapter.relight(source, "official_rmbg")
+            self.assertEqual(adapter.last_run_stats["alpha_mean"], 0.25)
+            self.assertEqual(adapter.last_run_stats["alpha_q05"], 0.25)
+            self.assertEqual(adapter.last_run_stats["alpha_q50"], 0.25)
+            self.assertEqual(adapter.last_run_stats["alpha_q95"], 0.25)
+            self.assertEqual(adapter.last_run_stats["alpha_fraction_lt_0_5"], 1.0)
+            self.assertEqual(adapter.last_run_stats["alpha_fraction_gt_0_9"], 0.0)
+            self.assertIn("elapsed_seconds", adapter.last_run_stats)
+            adapter.relight(source, "full_scene")
+        for key in ALPHA_STAT_KEYS:
+            with self.subTest(key=key):
+                self.assertIsNone(adapter.last_run_stats[key])
 
     def test_official_mode_conditions_on_the_rmbg_result(self):
         adapter = ICLightAdapter(ICLightConfig(device="cpu"))

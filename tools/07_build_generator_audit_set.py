@@ -15,6 +15,7 @@ from pathlib import Path
 import random
 import shutil
 import sqlite3
+import statistics
 import sys
 import tempfile
 
@@ -37,8 +38,23 @@ CANDIDATE_COLUMNS = (
 AUDIT_COLUMNS = (
     "audit_index", "group", "row_index", "image_id", "relative_path", "place_uid",
     "city_id", "source_512_path", "original_width", "original_height",
-    "crop_left", "crop_top", "crop_size",
+    "crop_left", "crop_top", "crop_size", "crop_long_axis_fraction",
+    "crop_area_fraction",
 )
+RETENTION_FIELDS = ("crop_long_axis_fraction", "crop_area_fraction")
+
+
+def _fraction_summary(values: list[float]) -> dict[str, float]:
+    """Describe retention using quantiles interpolated over the observed range."""
+    quantiles = statistics.quantiles(values, n=20, method="inclusive")
+    return {
+        "min": min(values),
+        "median": statistics.median(values),
+        "q05": quantiles[0],
+        "q25": quantiles[4],
+        "q75": quantiles[14],
+        "q95": quantiles[18],
+    }
 
 
 def _check_columns(reader: csv.DictReader, required: tuple[str, ...], path: Path) -> None:
@@ -271,19 +287,21 @@ def build_audit_set(
             "canonical_transform": "largest center square crop with floor offsets, then LANCZOS resize",
             "canonical_resolution": [512, 512],
             "source_coordinate_system": "decoded pixels, without EXIF transposition",
-            "jpeg_quality": 95,
-            "jpeg_subsampling": 0,
+            "source_image_format": "PNG",
+            "source_image_encoding": "lossless",
+            "crop_retention_quantiles": "inclusive linear interpolation over observed values",
         },
     }
     output_dir.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=f".{output_dir.name}-", dir=output_dir.parent) as temporary:
         staging = Path(temporary)
         (staging / "source_512").mkdir()
+        retention_values = {field: [] for field in RETENTION_FIELDS}
         with (staging / "audit_manifest.csv").open("w", newline="", encoding="utf-8") as handle:
             writer = csv.DictWriter(handle, fieldnames=AUDIT_COLUMNS)
             writer.writeheader()
             for audit_index, (row, path) in enumerate(zip(selected, source_paths)):
-                filename = f"{row['row_index']:08d}.jpg"
+                filename = f"{row['row_index']:08d}.png"
                 try:
                     with Image.open(path) as original:
                         rgb = original.convert("RGB")
@@ -292,7 +310,7 @@ def build_audit_set(
                         finally:
                             rgb.close()
                     try:
-                        canonical.save(staging / "source_512" / filename, format="JPEG", quality=95, subsampling=0)
+                        canonical.save(staging / "source_512" / filename, format="PNG")
                     finally:
                         canonical.close()
                 except (OSError, ValueError) as error:
@@ -304,6 +322,11 @@ def build_audit_set(
                     **{column: crop_metadata[column] for column in AUDIT_COLUMNS if column in crop_metadata},
                 }
                 writer.writerow(record)
+                for field in RETENTION_FIELDS:
+                    retention_values[field].append(crop_metadata[field])
+        summary.update({
+            field: _fraction_summary(values) for field, values in retention_values.items()
+        })
         (staging / "audit_summary.json").write_text(
             json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8",
         )

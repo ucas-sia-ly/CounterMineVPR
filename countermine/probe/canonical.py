@@ -6,7 +6,7 @@ from PIL import Image
 CANONICAL_SIZE = 512
 
 
-def canonicalize_probe(image: Image.Image) -> tuple[Image.Image, dict[str, int]]:
+def canonicalize_probe(image: Image.Image) -> tuple[Image.Image, dict[str, int | float]]:
     """Center-crop to the largest square, then resize to 512 x 512 RGB.
 
     Odd excess pixels are retained on the right or bottom side of the source
@@ -35,6 +35,8 @@ def canonicalize_probe(image: Image.Image) -> tuple[Image.Image, dict[str, int]]
         "crop_left": crop_left,
         "crop_top": crop_top,
         "crop_size": crop_size,
+        "crop_long_axis_fraction": crop_size / max(original_width, original_height),
+        "crop_area_fraction": crop_size ** 2 / (original_width * original_height),
         "output_width": CANONICAL_SIZE,
         "output_height": CANONICAL_SIZE,
     }

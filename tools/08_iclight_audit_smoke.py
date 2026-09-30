@@ -40,7 +40,7 @@ MAX_SMOKE_SOURCES = 10
 
 
 def load_smoke_sources(manifest_path: str | Path, count: int = 10) -> list[dict]:
-    """Take the first source rows in audit order; never expand to a full audit."""
+    """Select the first rows, rejecting legacy/mixed formats across the manifest."""
     if not isinstance(count, int) or not 1 <= count <= MAX_SMOKE_SOURCES:
         raise ValueError("smoke count must be between 1 and 10; larger audits are not enabled")
     manifest_path = Path(manifest_path)
@@ -65,13 +65,17 @@ def load_smoke_sources(manifest_path: str | Path, count: int = 10) -> list[dict]
                     raise ValueError("duplicate row_index or image_id among smoke sources")
                 if Path(row["source_512_path"]).is_absolute():
                     raise ValueError("source_512_path must be a relative reference")
+                if Path(row["source_512_path"]).suffix != ".png":
+                    raise ValueError(
+                        "source_512_path must reference a lossless .png; rebuild "
+                        "the audit set with tools/07_build_generator_audit_set.py"
+                    )
             except (ValueError, TypeError) as error:
                 raise ValueError(f"audit manifest CSV line {expected_index + 2}: {error}") from error
-            selected.append({**row, "audit_index": audit_index, "row_index": row_index})
+            if len(selected) < count:
+                selected.append({**row, "audit_index": audit_index, "row_index": row_index})
             seen_indices.add(row_index)
             seen_ids.add(row["image_id"])
-            if len(selected) == count:
-                break
     if len(selected) != count:
         raise ValueError(f"smoke audit requires {count} sources; manifest contains only {len(selected)}")
     return selected
@@ -88,9 +92,13 @@ def _validate_image(image: Image.Image) -> None:
 
 
 def _validate_file(path: Path) -> None:
-    """Check both the file structure and a complete pixel decode."""
+    """Require actual lossless PNG data, file structure, and a full decode."""
     try:
+        if path.suffix != ".png":
+            raise ValueError("canonical audit probes must use .png")
         with Image.open(path) as image:
+            if image.format != "PNG":
+                raise ValueError("canonical audit probe is not encoded as PNG; rebuild the audit set")
             image.verify()
         with Image.open(path) as image:
             _validate_image(image)
@@ -126,7 +134,7 @@ def _contact_sheet(sources: list[dict], staged_output: Path, destination: Path) 
         for column, label in enumerate(("SOURCE", "OFFICIAL_RMBG", "FULL_SCENE")):
             draw.text((margin + column * (tile + gap), 12), label, font=_font(18), fill="#111111")
         for position, row in enumerate(sources):
-            filename = f"{row['row_index']:08d}.jpg"
+            filename = f"{row['row_index']:08d}.png"
             paths = [Path(row["source_512_path"])] + [staged_output / "relit" / mode / filename for mode in MODES]
             top = header + position * row_height
             for column, path in enumerate(paths):
@@ -205,6 +213,12 @@ def run_smoke(
         if any(path == destination or path.is_relative_to(destination) for destination in managed):
             raise ValueError("smoke outputs must not overwrite the manifest or source images")
     # Validate every selected source before constructing even a lazy adapter.
+    for directory in {Path(row["source_512_path"]).resolve().parent for row in sources}:
+        if any(path.suffix.lower() in (".jpg", ".jpeg") for path in directory.iterdir()):
+            raise ValueError(
+                "legacy JPEG canonical sources found; rebuild the audit set with "
+                "tools/07_build_generator_audit_set.py instead of mixing JPG and PNG"
+            )
     for row in sources:
         _validate_file(Path(row["source_512_path"]))
 
@@ -215,6 +229,8 @@ def run_smoke(
         "count_outputs": count * len(MODES),
         "modes": list(MODES),
         "config": config_record,
+        "probe_image_format": "PNG",
+        "probe_image_encoding": "lossless",
         "manifest_reference": _reference(manifest_path),
         "manifest_sha256": _sha256(manifest_path),
         "source_sha256": source_hashes,
@@ -236,7 +252,7 @@ def run_smoke(
                 with Image.open(row["source_512_path"]) as source:
                     source.load()
                     for mode in MODES:
-                        filename = f"{row['row_index']:08d}.jpg"
+                        filename = f"{row['row_index']:08d}.png"
                         output_path = output_dir / "relit" / mode / filename
                         with source.copy() as inference_input:
                             original_pixels = inference_input.tobytes()
@@ -247,7 +263,7 @@ def run_smoke(
                                 if inference_input.tobytes() != original_pixels:
                                     raise ValueError("IC-Light adapter modified its input image")
                                 _validate_image(result)
-                                result.save(staging / "relit" / mode / filename, format="JPEG", quality=95, subsampling=0)
+                                result.save(staging / "relit" / mode / filename, format="PNG")
                             finally:
                                 if isinstance(result, Image.Image):
                                     result.close()

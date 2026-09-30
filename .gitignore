@@ -1,6 +1,6 @@
 data/
 cache/
-# outputs/
+outputs/step3
 checkpoints/
 wandb/
 *.pt

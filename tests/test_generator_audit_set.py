@@ -12,6 +12,8 @@ import unittest
 
 from PIL import Image
 
+from countermine.probe.canonical import canonicalize_probe
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = REPO_ROOT / "tools/07_build_generator_audit_set.py"
@@ -23,6 +25,7 @@ AUDIT_COLUMNS = [
     "audit_index", "group", "row_index", "image_id", "relative_path",
     "place_uid", "city_id", "source_512_path", "original_width",
     "original_height", "crop_left", "crop_top", "crop_size",
+    "crop_long_axis_fraction", "crop_area_fraction",
 ]
 
 
@@ -201,7 +204,7 @@ class GeneratorAuditArtifactTests(GeneratorAuditFixture, unittest.TestCase):
         self.assertEqual(len({row["row_index"] for row in rows}), 100)
         self.assertEqual(len({row["image_id"] for row in rows}), 100)
         self.assertEqual({path.name for path in (self.output_dir / "source_512").iterdir()},
-                         {f'{int(row["row_index"]):08d}.jpg' for row in rows})
+                         {f'{int(row["row_index"]):08d}.png' for row in rows})
         for row in rows:
             index = int(row["row_index"])
             original = self.manifest[index]
@@ -214,14 +217,22 @@ class GeneratorAuditArtifactTests(GeneratorAuditFixture, unittest.TestCase):
             self.assertEqual(int(row["crop_left"]), (width - crop_size) // 2)
             self.assertEqual(int(row["crop_top"]), (height - crop_size) // 2)
             self.assertEqual(int(row["crop_size"]), crop_size)
-            output_path = self.output_dir / "source_512" / f"{index:08d}.jpg"
+            self.assertEqual(float(row["crop_long_axis_fraction"]), crop_size / max(width, height))
+            self.assertEqual(float(row["crop_area_fraction"]), crop_size ** 2 / (width * height))
+            output_path = self.output_dir / "source_512" / f"{index:08d}.png"
             self.assertFalse(Path(row["relative_path"]).is_absolute())
             self.assertFalse(Path(row["source_512_path"]).is_absolute())
             self.assertEqual(row["source_512_path"], os.path.relpath(output_path, Path.cwd()))
             with Image.open(output_path) as image:
                 self.assertEqual(image.size, (512, 512))
                 self.assertEqual(image.mode, "RGB")
-                self.assertEqual(image.format, "JPEG")
+                self.assertEqual(image.format, "PNG")
+                with Image.open(self.dataset_root / row["relative_path"]) as source:
+                    canonical, _ = canonicalize_probe(source)
+                    try:
+                        self.assertEqual(image.tobytes(), canonical.tobytes())
+                    finally:
+                        canonical.close()
         summary = json.loads((self.output_dir / "audit_summary.json").read_text(encoding="utf-8"))
         self.assertEqual(returned_summary, summary)
         self.assertEqual(summary["number_of_images"], 100)
@@ -234,6 +245,19 @@ class GeneratorAuditArtifactTests(GeneratorAuditFixture, unittest.TestCase):
         self.assertEqual(summary["manifest_reference"], os.path.relpath(self.manifest_path, Path.cwd()))
         self.assertEqual(summary["rgb_candidate_reference"], os.path.relpath(self.candidates_path, Path.cwd()))
         self.assertEqual(summary["config"]["seed"], 42)
+        self.assertEqual(summary["config"]["source_image_format"], "PNG")
+        self.assertEqual(summary["config"]["source_image_encoding"], "lossless")
+        self.assertNotIn("jpeg_quality", summary["config"])
+        self.assertNotIn("jpeg_subsampling", summary["config"])
+        for field in ("crop_long_axis_fraction", "crop_area_fraction"):
+            # More than 25 and fewer than 75 of the selected images are square.
+            expected = {
+                "min": 2 / 3, "median": 2 / 3, "q05": 2 / 3,
+                "q25": 2 / 3, "q75": 1.0, "q95": 1.0,
+            }
+            self.assertEqual(set(summary[field]), set(expected))
+            for statistic, value in expected.items():
+                self.assertAlmostEqual(summary[field][statistic], value)
         self.assertFalse(Path(summary["config"]["dataset_root"]).is_absolute())
         self.assertEqual(summary["config"]["dataset_root"],
                          os.path.relpath(self.dataset_root, Path.cwd()))
@@ -245,6 +269,30 @@ class GeneratorAuditArtifactTests(GeneratorAuditFixture, unittest.TestCase):
         checksums = self.output_checksums()
         self.assertEqual(first_summary, self.build())
         self.assertEqual(checksums, self.output_checksums())
+
+    def test_build_replaces_old_jpeg_sources_without_mixing_formats(self):
+        source_dir = self.output_dir / "source_512"
+        source_dir.mkdir(parents=True)
+        with Image.new("RGB", (512, 512), "red") as image:
+            image.save(source_dir / "00000000.jpg")
+        (source_dir / "stale.png").write_bytes(b"stale previous source")
+
+        self.build()
+
+        self.assertEqual(len(list(source_dir.iterdir())), 100)
+        self.assertEqual({path.suffix for path in source_dir.iterdir()}, {".png"})
+        self.assertFalse((source_dir / "00000000.jpg").exists())
+        self.assertFalse((source_dir / "stale.png").exists())
+
+    def test_crop_retention_summary_uses_inclusive_interpolated_quantiles(self):
+        summary = builder._fraction_summary([1.0, 0.1, 0.6, 0.4])
+        expected = {
+            "min": 0.1, "median": 0.5, "q05": 0.145,
+            "q25": 0.325, "q75": 0.7, "q95": 0.94,
+        }
+        self.assertEqual(set(summary), set(expected))
+        for statistic, value in expected.items():
+            self.assertAlmostEqual(summary[statistic], value)
 
     def test_failed_image_preserves_already_published_set(self):
         self.build()
