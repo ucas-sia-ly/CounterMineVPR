@@ -20,4 +20,8 @@ docs/         method and experiment documentation
 
 Synthetic images are probe-only and never used for VPR optimization.
 
+The frozen [Step 3A retrieval-margin pilot](docs/step_3a_counterfactual_margin_pilot.md)
+compares paired SALAD hard and random negatives with positive stability,
+R8 fidelity, and unregistered local confusion controls.
+
 Upstream repositories used: SALAD, IC-Light, LightGlue, AdaptVPR.
