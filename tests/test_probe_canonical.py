@@ -1,10 +1,13 @@
 """CPU checks for deterministic canonical geometry policies."""
 
 import unittest
+from unittest import mock
 
 from PIL import Image, ImageDraw
 
-from countermine.probe.canonical import canonicalize_probe, full_fov_512, square_crop_512
+from countermine.probe.canonical import (
+    canonicalize_probe, full_fov_512, native_full_fov, square_crop_512,
+)
 
 
 class ProbeCanonicalTest(unittest.TestCase):
@@ -180,10 +183,67 @@ class ProbeCanonicalTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "exact aspect-preserving"):
                     full_fov_512(Image.new("RGB", size))
 
+    def test_native_full_fov_copies_640_by_480_pixels_and_exact_metadata(self) -> None:
+        for mode in ("RGB", "L", "RGBA"):
+            with self.subTest(mode=mode):
+                image = Image.new(mode, (640, 480))
+                ImageDraw.Draw(image).rectangle((0, 0, 79, 479), fill=255)
+                expected = image.convert("RGB").tobytes()
+                original = image.tobytes()
+                result, metadata = canonicalize_probe(image, "native_full_fov")
+                self.assertEqual(result.size, (640, 480))
+                self.assertEqual(result.mode, "RGB")
+                self.assertEqual(result.tobytes(), expected)
+                self.assertEqual(image.tobytes(), original)
+                self.assertIsNot(result, image)
+                self.assertEqual(metadata, {
+                    "policy": "native_full_fov",
+                    "original_width": 640, "original_height": 480,
+                    "output_width": 640, "output_height": 480,
+                    "scale_x": 1.0, "scale_y": 1.0,
+                    "retained_area_fraction": 1.0,
+                    "retained_long_axis_fraction": 1.0,
+                })
+                result.putpixel((639, 479), (255, 0, 0))
+                self.assertEqual(image.tobytes(), original)
+
+    def test_native_full_fov_never_applies_geometry_operations_or_exif(self) -> None:
+        image = Image.new("RGB", (640, 480), "blue")
+        ImageDraw.Draw(image).rectangle((0, 0, 79, 479), fill="red")
+        image.getexif()[274] = 6
+        with mock.patch.object(Image.Image, "resize", side_effect=AssertionError("resize")), \
+             mock.patch.object(Image.Image, "crop", side_effect=AssertionError("crop")), \
+             mock.patch("PIL.ImageOps.exif_transpose", side_effect=AssertionError("EXIF")):
+            result, _ = native_full_fov(image)
+        self.assertEqual(result.size, (640, 480))
+        self.assertEqual(result.tobytes(), image.tobytes())
+        self.assertEqual(result.getpixel((0, 240)), (255, 0, 0))
+        self.assertEqual(result.getpixel((639, 240)), (0, 0, 255))
+
+    def test_native_full_fov_rejects_any_unexpected_source_geometry(self) -> None:
+        for size in ((480, 640), (640, 479), (640, 481), (639, 480), (641, 480), (512, 512)):
+            with self.subTest(size=size):
+                with self.assertRaisesRegex(ValueError, "requires source dimensions exactly 640x480"):
+                    native_full_fov(Image.new("RGB", size))
+
+    def test_historical_policies_keep_their_pixel_transforms_for_native_source(self) -> None:
+        image = Image.new("RGB", (640, 480), "blue")
+        ImageDraw.Draw(image).rectangle((0, 0, 79, 479), fill="red")
+        expected_square = image.crop((80, 0, 560, 480)).resize(
+            (512, 512), Image.Resampling.LANCZOS,
+        )
+        expected_full = image.resize((512, 384), Image.Resampling.LANCZOS)
+        square, square_metadata = canonicalize_probe(image, "square_crop_512")
+        full, full_metadata = canonicalize_probe(image, "full_fov_512")
+        self.assertEqual(square.tobytes(), expected_square.tobytes())
+        self.assertEqual(full.tobytes(), expected_full.tobytes())
+        self.assertEqual(square_metadata["scale_x"], 512 / 480)
+        self.assertEqual(full_metadata["scale_x"], 0.8)
+
     def test_invalid_policy_and_nonimage_are_rejected(self) -> None:
         with self.assertRaisesRegex(ValueError, "Unknown canonical policy"):
             canonicalize_probe(Image.new("RGB", (512, 384)), "unknown")
-        for function in (canonicalize_probe, square_crop_512, full_fov_512):
+        for function in (canonicalize_probe, square_crop_512, full_fov_512, native_full_fov):
             with self.subTest(function=function.__name__):
                 with self.assertRaises(TypeError):
                     function(None)

@@ -2,7 +2,7 @@
 - The core hypothesis must be validated before training modifications are implemented.
 - Synthetic/relit images are diagnostic probes only.
 - Synthetic images must never be passed to the VPR optimization loss.
-- Probe images use one canonical 512x512 coordinate system.
+- The preferred candidate geometry for frozen GSV-Cities probes is native full-FOV 640x480; preserve historical 512-based policies and snapshots.
 - The initial intervention must be mild relighting only.
 - Do not use night, snow, heavy rain, or strong generative transformations in the first-stage experiments.
 - Local geometric matching, not global cosine gain, is the main counterfactual signal.

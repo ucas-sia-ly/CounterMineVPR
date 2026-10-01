@@ -411,6 +411,19 @@ json.dumps(metadata, allow_nan=False)
             result = adapter.match(features, features)
             self.assertEqual((result.canonical_width, result.canonical_height), (512, 384))
 
+    def test_native_png_extract_preserves_640_by_480_and_resize_none(self):
+        with TemporaryDirectory() as temporary:
+            adapter = self.fake_adapter(temporary)
+            source = Path(temporary) / "native.png"
+            Image.new("RGB", (640, 480)).save(source)
+            features = adapter.extract(source)
+            image, kwargs = adapter.extractor.extraction_calls[-1]
+            self.assertEqual(tuple(image.shape), (3, 480, 640))
+            self.assertEqual(kwargs, {"resize": None})
+            torch.testing.assert_close(features["image_size"], torch.tensor([[640.0, 480.0]]))
+            result = adapter.match(features, features)
+            self.assertEqual((result.canonical_width, result.canonical_height), (640, 480))
+
     def test_rectangular_extract_rejects_square_metadata_and_outside_keypoints(self):
         with TemporaryDirectory() as temporary:
             adapter = self.fake_adapter(temporary)

@@ -4,7 +4,7 @@ from PIL import Image
 
 
 CANONICAL_SIZE = 512
-CANONICAL_POLICIES = ("square_crop_512", "full_fov_512")
+CANONICAL_POLICIES = ("square_crop_512", "full_fov_512", "native_full_fov")
 
 
 def _validate_image(image: Image.Image) -> tuple[int, int]:
@@ -86,15 +86,44 @@ def full_fov_512(image: Image.Image) -> tuple[Image.Image, dict[str, str | int |
     return output, metadata
 
 
+def native_full_fov(image: Image.Image) -> tuple[Image.Image, dict[str, str | int | float]]:
+    """Copy the frozen GSV-Cities 640 x 480 stored pixels into RGB.
+
+    No EXIF transposition, crop, resize, padding, or stretch is applied. Other
+    source geometries fail rather than silently changing the experiment.
+    """
+    original_width, original_height = _validate_image(image)
+    if (original_width, original_height) != (640, 480):
+        raise ValueError(
+            "native_full_fov requires source dimensions exactly 640x480; "
+            f"received {original_width}x{original_height}"
+        )
+    output = image.copy() if image.mode == "RGB" else image.convert("RGB")
+    metadata = {
+        "policy": "native_full_fov",
+        "original_width": original_width,
+        "original_height": original_height,
+        "output_width": original_width,
+        "output_height": original_height,
+        "scale_x": 1.0,
+        "scale_y": 1.0,
+        "retained_area_fraction": 1.0,
+        "retained_long_axis_fraction": 1.0,
+    }
+    return output, metadata
+
+
 def canonicalize_probe(
     image: Image.Image, policy: str = "square_crop_512",
 ) -> tuple[Image.Image, dict[str, str | int | float]]:
     """Apply an explicit geometry policy; the historical square default is kept.
 
-    Both policies operate on stored pixels without EXIF transposition.
+    All policies operate on stored pixels without EXIF transposition.
     """
     if policy == "square_crop_512":
         return square_crop_512(image)
     if policy == "full_fov_512":
         return full_fov_512(image)
+    if policy == "native_full_fov":
+        return native_full_fov(image)
     raise ValueError(f"Unknown canonical policy {policy!r}; expected one of {CANONICAL_POLICIES}")

@@ -81,8 +81,8 @@ class ICLightConfig:
     def __post_init__(self):
         for name in ("width", "height"):
             value = getattr(self, name)
-            if not isinstance(value, int) or isinstance(value, bool) or value < 256 or value % 64:
-                raise ValueError(f"{name} must be an integer >= 256 and divisible by 64")
+            if not isinstance(value, int) or isinstance(value, bool) or value < 256 or value % 8:
+                raise ValueError(f"{name} must be an integer >= 256 and divisible by 8")
         if self.num_samples != 1:
             raise ValueError("The audit requires num_samples=1")
         if self.highres_scale != 1.0:
@@ -155,11 +155,15 @@ def _tensor_to_numpy(images):
 
 
 def _resize_without_crop(image, width, height):
+    if image.shape[:2] == (height, width):
+        return image.copy()
     return np.array(Image.fromarray(image).resize((width, height), Image.Resampling.LANCZOS))
 
 
 def _resize_and_center_crop(image, width, height):
     """The official inference resize; canonical inputs retain their geometry."""
+    if image.shape[:2] == (height, width):
+        return image.copy()
     source = Image.fromarray(image)
     scale = max(width / source.width, height / source.height)
     resized_width = int(round(source.width * scale))
@@ -169,6 +173,21 @@ def _resize_and_center_crop(image, width, height):
                                   (resized_height - height) / 2,
                                   (resized_width + width) / 2,
                                   (resized_height + height) / 2)))
+
+
+def _require_pixel_geometry(image, width, height, stage):
+    if image.shape != (height, width, 3):
+        raise ValueError(
+            f"IC-Light {stage} must be exactly {width}x{height} RGB pixels; "
+            f"received shape {image.shape}"
+        )
+
+
+def _require_latent_geometry(latents, width, height, stage):
+    if tuple(latents.shape[2:]) != (height // 8, width // 8):
+        raise ValueError(
+            f"IC-Light {stage} latent geometry must represent exactly {width}x{height}"
+        )
 
 
 def _configure_unet(unet):
@@ -409,10 +428,16 @@ class ICLightAdapter:
         import torch
 
         config = self.config
+        if config.highres_scale != 1.0:
+            raise ValueError("Exact diagnostic geometry requires highres_scale=1.0")
+        highres_width, highres_height = config.width, config.height
+        _require_pixel_geometry(foreground, config.width, config.height, "foreground")
         rng = torch.Generator(device=self.device).manual_seed(config.seed)
         fg = _resize_and_center_crop(foreground, config.width, config.height)
+        _require_pixel_geometry(fg, config.width, config.height, "first-stage conditioning")
         concat = _numpy_to_tensor([fg]).to(device=self.vae.device, dtype=self.vae.dtype)
         concat = self.vae.encode(concat).latent_dist.mode() * self.vae.config.scaling_factor
+        _require_latent_geometry(concat, config.width, config.height, "first-stage conditioning")
         conditioned, unconditioned = self._encode_prompt_pair()
         common = dict(prompt_embeds=conditioned, negative_prompt_embeds=unconditioned,
                       num_images_per_prompt=config.num_samples, generator=rng,
@@ -421,24 +446,33 @@ class ICLightAdapter:
             width=config.width, height=config.height, num_inference_steps=config.steps,
             cross_attention_kwargs={"concat_conds": concat}, **common,
         ).images.to(self.vae.dtype) / self.vae.config.scaling_factor
+        _require_latent_geometry(latents, config.width, config.height, "first-stage output")
         pixels = _tensor_to_numpy(self.vae.decode(latents).sample)
-        pixels = [_resize_without_crop(pixel,
-                   int(round(config.width * config.highres_scale / 64.0) * 64),
-                   int(round(config.height * config.highres_scale / 64.0) * 64))
-                  for pixel in pixels]
+        for pixel in pixels:
+            _require_pixel_geometry(pixel, config.width, config.height, "first decoded image")
+        pixels = [_resize_without_crop(pixel, highres_width, highres_height) for pixel in pixels]
+        for pixel in pixels:
+            _require_pixel_geometry(pixel, highres_width, highres_height, "refinement image")
         pixels = _numpy_to_tensor(pixels).to(device=self.vae.device, dtype=self.vae.dtype)
         latents = self.vae.encode(pixels).latent_dist.mode() * self.vae.config.scaling_factor
         latents = latents.to(device=self.unet.device, dtype=self.unet.dtype)
-        height, width = latents.shape[2] * 8, latents.shape[3] * 8
+        width, height = highres_width, highres_height
+        _require_latent_geometry(latents, width, height, "refinement input")
         fg = _resize_and_center_crop(foreground, width, height)
+        _require_pixel_geometry(fg, width, height, "second-stage conditioning")
         concat = _numpy_to_tensor([fg]).to(device=self.vae.device, dtype=self.vae.dtype)
         concat = self.vae.encode(concat).latent_dist.mode() * self.vae.config.scaling_factor
+        _require_latent_geometry(concat, width, height, "second-stage conditioning")
         latents = self.i2i_pipe(
             image=latents, strength=config.highres_denoise, width=width, height=height,
             num_inference_steps=int(round(config.steps / config.highres_denoise)),
             cross_attention_kwargs={"concat_conds": concat}, **common,
         ).images.to(self.vae.dtype) / self.vae.config.scaling_factor
-        return _tensor_to_numpy(self.vae.decode(latents).sample)
+        _require_latent_geometry(latents, width, height, "refinement output")
+        outputs = _tensor_to_numpy(self.vae.decode(latents).sample)
+        for pixel in outputs:
+            _require_pixel_geometry(pixel, width, height, "final decoded image")
+        return outputs
 
     def relight(self, image: Image.Image, mode: str) -> Image.Image:
         """Return one canonical RGB probe without ever modifying ``image``."""

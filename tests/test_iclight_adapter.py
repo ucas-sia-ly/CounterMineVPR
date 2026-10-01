@@ -22,6 +22,7 @@ from countermine.probe.iclight_adapter import (
     _configure_unet,
     _numpy_to_tensor,
     _resize_and_center_crop,
+    _resize_without_crop,
     _tensor_to_numpy,
     alpha_statistics,
 )
@@ -135,11 +136,27 @@ class ICLightAdapterTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     ICLightConfig(**overrides)
 
-    def test_config_accepts_explicit_integer_64_divisible_canonical_geometry(self):
-        for width, height in ((512, 512), (512, 384), (384, 512), (256, 512), (512, 640)):
+    def test_config_accepts_explicit_integer_8_divisible_canonical_geometry(self):
+        for width, height in (
+            (512, 512), (512, 384), (384, 512), (256, 512), (512, 640),
+            (640, 480), (264, 472),
+        ):
             with self.subTest(width=width, height=height):
                 config = ICLightConfig(width=width, height=height)
                 self.assertEqual((config.width, config.height), (width, height))
+
+    def test_config_rejects_non_8_divisible_native_geometry_and_scaled_refinement(self):
+        for overrides in (
+            {"width": 639, "height": 480}, {"width": 640, "height": 479},
+            {"width": 640, "height": 481}, {"width": 248, "height": 480},
+        ):
+            with self.subTest(overrides=overrides):
+                with self.assertRaisesRegex(ValueError, ">= 256 and divisible by 8"):
+                    ICLightConfig(**overrides)
+        for scale in (0.5, 1.01, 1.5, float("nan"), float("inf")):
+            with self.subTest(scale=scale):
+                with self.assertRaisesRegex(ValueError, "requires highres_scale=1.0"):
+                    ICLightConfig(width=640, height=480, highres_scale=scale)
 
     def test_config_rejects_prompt_changes_and_directional_backgrounds(self):
         for overrides in (
@@ -518,6 +535,95 @@ adapter = ICLightAdapter()
         image[:, -64:] = (0, 255, 0)
         actual = _resize_and_center_crop(image, 512, 384)
         self.assertTrue(np.array_equal(actual, image))
+
+    def test_native_same_size_helpers_copy_without_crop_or_resample(self):
+        image = np.zeros((480, 640, 3), dtype=np.uint8)
+        image[:, :80] = (255, 0, 0)
+        image[:, -80:] = (0, 255, 0)
+        with mock.patch.object(Image, "fromarray", side_effect=AssertionError("PIL resize/crop")):
+            for helper in (_resize_without_crop, _resize_and_center_crop):
+                with self.subTest(helper=helper.__name__):
+                    result = helper(image, 640, 480)
+                    self.assertEqual(result.shape, (480, 640, 3))
+                    self.assertTrue(np.array_equal(result, image))
+                    self.assertFalse(np.shares_memory(result, image))
+
+    def test_native_two_stage_geometry_preserves_480_height_without_64_rounding(self):
+        adapter = self._adapter_with_cpu_components(width=640, height=480)
+        source = Image.new("RGB", (640, 480), (127, 127, 127))
+        original = source.tobytes()
+        with mock.patch.object(adapter, "_ensure_rmbg") as load_rmbg, \
+             mock.patch.object(adapter, "_run_rmbg") as run_rmbg, \
+             mock.patch("countermine.probe.iclight_adapter._resize_without_crop",
+                        wraps=_resize_without_crop) as refinement_resize, \
+             mock.patch("countermine.probe.iclight_adapter._resize_and_center_crop",
+                        wraps=_resize_and_center_crop) as conditioning_resize, \
+             mock.patch.object(torch.cuda, "is_available", side_effect=AssertionError("CUDA queried")):
+            output = adapter.relight(source, "full_scene")
+        load_rmbg.assert_not_called()
+        run_rmbg.assert_not_called()
+        self.assertEqual(source.tobytes(), original)
+        self.assertEqual(output.size, (640, 480))
+        self.assertEqual(output.mode, "RGB")
+        self.assertEqual(len(adapter.vae.encoded), 3)
+        self.assertEqual(len(adapter.vae.decoded), 2)
+        for encoded in adapter.vae.encoded:
+            self.assertEqual(tuple(encoded.shape), (1, 3, 480, 640))
+        for decoded in adapter.vae.decoded:
+            self.assertEqual(tuple(decoded.shape), (1, 4, 60, 80))
+        for call in (adapter.t2i_pipe.calls[0], adapter.i2i_pipe.calls[0]):
+            self.assertEqual((call["width"], call["height"]), (640, 480))
+            self.assertEqual(tuple(call["cross_attention_kwargs"]["concat_conds"].shape), (1, 4, 60, 80))
+            self.assertEqual(call["generator"].initial_seed(), 12345)
+            self.assertEqual(call["guidance_scale"], 2.0)
+        self.assertEqual(adapter.t2i_pipe.calls[0]["num_inference_steps"], 25)
+        self.assertEqual(adapter.i2i_pipe.calls[0]["num_inference_steps"], 50)
+        self.assertEqual(adapter.i2i_pipe.calls[0]["strength"], 0.5)
+        self.assertEqual(refinement_resize.call_args.args[1:], (640, 480))
+        self.assertEqual(len(conditioning_resize.call_args_list), 2)
+        for call in conditioning_resize.call_args_list:
+            self.assertEqual(call.args[1:], (640, 480))
+
+    def test_native_input_and_final_output_must_be_exactly_640_by_480(self):
+        adapter = self._adapter_with_cpu_components(width=640, height=480)
+        for size in ((640, 512), (512, 512), (640, 479), (480, 640)):
+            with self.subTest(size=size):
+                with self.assertRaisesRegex(ValueError, "exactly match"):
+                    adapter.relight(Image.new("RGB", size), "full_scene")
+        adapter._ensure_models.assert_not_called()
+        source = Image.new("RGB", (640, 480))
+        for shape in ((512, 640, 3), (512, 512, 3), (480, 640, 4)):
+            with self.subTest(shape=shape):
+                with mock.patch.object(adapter, "_process", return_value=[np.zeros(shape, dtype=np.uint8)]):
+                    with self.assertRaisesRegex(ValueError, "output must be finite"):
+                        adapter.relight(source, "full_scene")
+
+    def test_native_first_decoded_geometry_cannot_be_silently_resized(self):
+        adapter = self._adapter_with_cpu_components(width=640, height=480)
+        original_decode = adapter.vae.decode
+
+        def wrong_geometry(latents):
+            decoded = original_decode(latents)
+            return SimpleNamespace(sample=torch.nn.functional.interpolate(decoded.sample, size=(512, 640)))
+
+        with mock.patch.object(adapter.vae, "decode", side_effect=wrong_geometry):
+            with self.assertRaisesRegex(ValueError, "first decoded image must be exactly 640x480"):
+                adapter.relight(Image.new("RGB", (640, 480)), "full_scene")
+        self.assertEqual(adapter.i2i_pipe.calls, [])
+
+    def test_native_final_decoded_geometry_is_checked_inside_two_stage_process(self):
+        adapter = self._adapter_with_cpu_components(width=640, height=480)
+        original_decode = adapter.vae.decode
+
+        def wrong_second_decode(latents):
+            decoded = original_decode(latents)
+            if len(adapter.vae.decoded) == 2:
+                decoded.sample = torch.nn.functional.interpolate(decoded.sample, size=(512, 640))
+            return decoded
+
+        with mock.patch.object(adapter.vae, "decode", side_effect=wrong_second_decode):
+            with self.assertRaisesRegex(ValueError, "final decoded image must be exactly 640x480"):
+                adapter.relight(Image.new("RGB", (640, 480)), "full_scene")
 
 
 if __name__ == "__main__":
