@@ -9,8 +9,8 @@
 - Shared-condition bias must be estimated using random-pair null statistics.
 - Generation failures must be rejected through a structural fidelity gate.
 - Training modifications must preserve the original SALAD baseline as much as possible.
-- CounterMine pairs must bypass similarity-only mining filters.
-- CounterMine weighting must also be reflected inside the metric-learning loss.
+- Any future CounterMine-specific sampler/miner behavior must be justified experimentally; do not hard-code bypass of similarity filters before the training objective is validated.
+- Any future CounterMine weighting inside a metric-learning loss must be justified experimentally; no final CounterMine training objective has been selected yet.
 - Hardware target: one RTX 4090 48GB with 32GB system RAM.
 - Prefer streaming/chunked processing.
 - Never cache full-dataset local features in RAM.
