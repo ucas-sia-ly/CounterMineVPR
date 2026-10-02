@@ -1,6 +1,6 @@
 data/
 cache/
-# outputs/
+outputs/
 checkpoints/
 wandb/
 *.pt
