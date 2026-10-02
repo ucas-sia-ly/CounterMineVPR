@@ -1,19 +1,26 @@
-- CounterMineVPR studies latent hard negatives in visual place recognition.
-- The core hypothesis must be validated before training modifications are implemented.
-- Synthetic/relit images are diagnostic probes only.
-- Synthetic images must never be passed to the VPR optimization loss.
-- Probe images use one canonical 512x512 coordinate system.
-- The initial intervention must be mild relighting only.
-- Do not use night, snow, heavy rain, or strong generative transformations in the first-stage experiments.
-- Local geometric matching, not global cosine gain, is the main counterfactual signal.
-- Shared-condition bias must be estimated using random-pair null statistics.
-- Generation failures must be rejected through a structural fidelity gate.
-- Training modifications must preserve the original SALAD baseline as much as possible.
-- CounterMine pairs must bypass similarity-only mining filters.
-- CounterMine weighting must also be reflected inside the metric-learning loss.
+- CounterMineVPR studies structural counterexamples in visual place recognition.
+- Active CounterMine mining uses ORIGINAL REAL RGB images only.
+- Synthetic or relit images are not part of active mining.
+- CounterMine begins from frozen SALAD RGB candidates.
+- The structural-confusion hypothesis must be validated before graph construction or training modifications.
+- Same-place pairs must never be treated as negatives.
+- Candidate geographic exclusion must be explicit and reproducible; Step 2A freezes >=250 m.
+- Different-place local matching is descriptive structural evidence.
+- Do NOT use source-to-source coordinate displacement such as R4/R8 for different-place pairs.
+- Do NOT assume homography, fundamental matrix, or global registration between different places.
+- The primary Step 2A local metric is LightGlue match ratio: matches / min(endpoint keypoint counts), with zero for a zero denominator.
+- Spatial coverage / entropy / concentration metrics are diagnostics only and must NOT be used as hard rejection gates in Step 2A.
+- No final CounterMine score exists yet.
+- No final CounterMine graph threshold exists yet.
+- No final training objective exists yet.
+- Do not assume CounterMine pairs require stronger loss weights.
+- Do not assume pair-specific margins improve VPR.
+- The first future training experiment should keep the original SALAD loss unchanged and modify pair exposure / sampling only.
+- Step 2A does not implement a graph, sampler, training, margins, weights, or loss changes.
+- Step 2A uses original 640x480 RGB without crop, resize, padding, stretching, or EXIF transpose.
+- Prefer streaming processing and a small bounded local-feature cache.
+- Never cache the entire dataset's local features in RAM or write a permanent full-dataset local-feature bank in Step 2A.
 - Hardware target: one RTX 4090 48GB with 32GB system RAM.
-- Prefer streaming/chunked processing.
-- Never cache full-dataset local features in RAM.
-- third_party repositories are read-only unless a change is absolutely necessary.
-- Every experiment must have a deterministic seed and save its configuration.
-- Do not claim performance improvements without actual logged results.
+- third_party code is read-only.
+- Every experiment must be deterministic and save provenance; Step 2A defaults to seed 42.
+- Do not claim improvements without measured results.
