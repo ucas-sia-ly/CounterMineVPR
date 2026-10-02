@@ -2,7 +2,7 @@
 - Active CounterMine mining uses ORIGINAL REAL RGB images only.
 - Synthetic or relit images are not part of active mining.
 - CounterMine begins from frozen SALAD RGB candidates.
-- The structural-confusion hypothesis must be validated before graph construction or training modifications.
+- The structural-confusion hypothesis must be validated before full-population scaling or training modifications; Step 2B is a graph pilot using the completed Step 2A measurements only.
 - Same-place pairs must never be treated as negatives.
 - Candidate geographic exclusion must be explicit and reproducible; Step 2A freezes >=250 m.
 - Different-place local matching is descriptive structural evidence.
@@ -24,3 +24,12 @@
 - third_party code is read-only.
 - Every experiment must be deterministic and save provenance; Step 2A defaults to seed 42.
 - Do not claim improvements without measured results.
+- Step 2B is CPU-only; do not import model runtimes or rerun local matching.
+- Step 2A scientific snapshots, figures, and runtime measurements are immutable inputs to Step 2B.
+- Step 2B retains all 5,000 measured candidate edges in the full graph.
+- Structural bottleneck and geomean are graph-analysis evidence only; no training mapping is selected.
+- q95/q99 are frozen pilot topology/visualization slices, not final mining or training thresholds.
+- Coverage and entropy remain diagnostics; no keypoint-count or coverage hard gate is permitted.
+- Geographic >=500 m variants are sensitivity analyses; retain the original >=250 m eligibility.
+- Distinguish all-support view counts from core-only independent multi-view support.
+- Do not scale local measurement to the full candidate population or implement training without a later explicit task.
