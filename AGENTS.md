@@ -33,3 +33,9 @@
 - Geographic >=500 m variants are sensitivity analyses; retain the original >=250 m eligibility.
 - Distinguish all-support view counts from core-only independent multi-view support.
 - Do not scale local measurement to the full candidate population or implement training without a later explicit task.
+- Step 2C is CPU-only joint-null and fixed-graph topology-null validation, with no new local matching or model imports.
+- Step 2A and Step 2B snapshots, figures, measurements and graph outputs are immutable inputs to Step 2C.
+- Step 2C scientific artifacts belong only in cache/countermine_rgb/step2c/, outputs/step2c/ and docs/audits/step2c_*.
+- Step 2C moves the ratio/count evidence and core flags together, within city-relation x SALAD-rank x geography strata; never rewire endpoints.
+- Joint empirical-null tails must account for ties and ratio/count dependence; report leave-one-out sensitivity separately.
+- Empirical topology exceedance fractions are descriptive diagnostics, not definitive hypothesis-test p-values or VPR improvements.

@@ -10,6 +10,7 @@ Real RGB
   -> ALIKED + LightGlue real-RGB structural analysis
   -> matched-random calibration of structural evidence
   -> CounterMine structural confusion graph pilot
+  -> joint-null and fixed-graph topology-null validation
   -> future pair-aware training
 ```
 
@@ -20,6 +21,7 @@ Real RGB
 | Step 1: RGB candidate retrieval (1A–1C) | Completed |
 | Step 2A: real-RGB structural-confusion audit | Completed |
 | Step 2B: CounterMine structural confusion graph pilot | Completed; awaiting scientific review |
+| Step 2C: joint-null and topology-null validation | Implemented; experiment not yet run |
 | Step 3: training | Not yet implemented |
 
 Step 2A measures LightGlue matches divided by the smaller endpoint keypoint count. Candidate pairs must have different place IDs and be at least 250 m apart. A deterministic 5,000-pair pilot is sampled from the existing Top-50 retrieval pool after undirected canonicalization. Each candidate is compared with a random negative sharing its query anchor, city relation, and, for same-city pairs, geographic distance bin. Controls exclude the anchor's entire saved Top-50 list.
@@ -41,6 +43,18 @@ python tools/13_analyze_countermine_graph.py
 The frozen [Step 2A snapshot](docs/audits/step2a_rgb_structural_metrics.json) and curated figures remain unchanged. These CPU commands validate the existing measurements and never rerun ALIKED or LightGlue.
 
 The completed pilot retains 5,000 image edges. Its q95/q99 slices contain 352/77 edges, or 340/72 at >=500 m. Three place pairs repeat with two q95 supports; one has distinct core views on both sides, surviving the geographic sensitivity. See the [measured graph snapshot](docs/audits/step2b_countermine_graph_metrics.json) and [repeated-support montage](docs/audits/step2b_repeated_place_confusions.jpg). Semantic interpretation and any scaling decision remain for scientific review.
+
+## Running Step 2C
+
+[The Step 2C protocol](docs/step_2c_null_topology.md) validates joint ratio/count tail rates against the existing matched controls, then permutes complete structural-evidence bundles within city-relation × SALAD-rank × geographic strata of the unchanged 5,000-edge graph. It runs entirely on CPU and preserves the frozen Step 2A/2B artifacts.
+
+```bash
+python tools/14_analyze_joint_null.py
+python tools/15_analyze_topology_null.py --permutations 1000 --seed 42
+python tools/16_export_step2c_audit.py
+```
+
+These commands write runtime tables to `cache/countermine_rgb/step2c/`, four plots to `outputs/step2c/`, and a curated `docs/audits/step2c_null_topology_metrics.json` snapshot plus plots. The combined Step 2C audit has not been published yet. If stage outputs already exist from before the raw-ratio roundtrip fix, follow the [fresh-directory rerun instructions](docs/step_2c_null_topology.md#run) to preserve them and avoid mixing code hashes. Joint-null and topology-null evidence must be reviewed before spending GPU time on scaling; training remains unimplemented.
 
 ## Completed Step 2A workflow
 
