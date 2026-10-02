@@ -1,12 +1,16 @@
-# Step 2D — Full-Scale CounterMine Structural Mining
+# Step 2D — Completed
+
+Full-scale CounterMine structural mining
 
 ## Status and scientific scope
 
-The implementation provides the full-population workflow below. The full scientific experiment is **pending execution**: a completed CPU test or population preflight does not imply that feature extraction, replay validation, full matching, graph analysis or export completed. Mark Step 2D completed only after the full validated run and final scientific snapshot exist.
+The [frozen scientific snapshot](audits/step2d_full_countermine_metrics.json) records `complete = true`. The validated full run measured **260,502 canonical pairs**, covering **8,000 images** and **2,000 places**, and exactly reproduced all **5,000 Step 2A pilot pairs**. Full-population q95/q99 rates are **6.61492% / 1.58079%**, compared with frozen matched-random rates **2.20044% / 0.380076%**, giving descriptive enrichment ratios **3.00618 / 4.15915**. These measurements establish structural evidence; they do not establish VPR improvement.
+
+The scientific run was produced before the git commit containing the results. Exact source identity is pinned by code hashes and input hashes inside the snapshot. The snapshot’s original `git_commit_at_export` is historical provenance and must not be rewritten to the later result-containing commit.
 
 The reference branch is `feat/rgb-structural-countermine`, with expected starting commit `cbe93cbc64ca7454a40774e247b60338a424167b`. Step 2A, Step 2B and the completed [Step 2C audit](step_2c_null_topology.md#measured-results) are frozen evidence. Candidate q95/q99 joint enrichment and place-graph concentration motivate measuring the entire eligible SALAD population. Step 2C did not establish unusual strict independent pairwise multi-view support. The scientific emphasis is structural-confusion concentration, communities and hubs.
 
-The active pipeline is original real RGB → frozen SALAD Top-50 candidates → different-place, >=250 m canonical population → one-time ALIKED feature bank → full LightGlue measurement → frozen matched-random calibration → complete image/place graph. Step 2D implements no training, sampler, SALAD modification, loss, margin or pair-specific weight. There is no final CounterMine scalar score or final graph threshold. A later first training experiment should preserve the original SALAD loss and vary pair exposure/sampling only.
+The active pipeline is original real RGB → frozen SALAD Top-50 candidates → different-place, >=250 m canonical population → one-time ALIKED feature bank → full LightGlue measurement → frozen matched-random calibration → complete image/place graph. Step 2D implements no training, sampler, SALAD modification, loss, margin or pair-specific weight. There is no final CounterMine scalar score or final graph threshold. The authorized [Step 3A pilot](step_3a_edge_cobatching.md) preserves the original SALAD loss and varies place co-occurrence only. Step 2D inputs and outputs remain immutable during that work.
 
 ## Immutable inputs and output locations
 
@@ -194,4 +198,4 @@ Unit tests remain CPU-only and exercise population identities, frozen calibratio
 
 Implementation validation passed: compilation and all **239 tests** in the default environment, plus all **65 Step 2D tests** in `countermine-mining`. All nine CLI help commands passed. Stage 17 produced and reloaded all 260,502 canonical pairs in a disposable Step 2D directory, which was then removed. A before/after inventory confirmed that all 10,101 frozen-input and vendored-source files were unchanged. No formal Step 2D cache, GPU feature bank, replay, measurement, throughput result or scientific export was produced during implementation validation.
 
-After the run, inspect whether enrichment and weak SALAD association survive full scale; whether q95 becomes a giant graph; whether the predeclared stricter slices expose communities/hubs; what visual structures drive hubs; and whether >=500 m preserves them. Only after that scientific review should Step 3 consider pair exposure, hub/community-aware sampling or no graph-aware training. No VPR improvement, better retrieval, architectural-only structure, causal explanation or final training score is claimed here.
+The completed run records sustained enrichment against the frozen controls and a q95 largest component spanning 1,874 of 2,000 places. Predeclared stricter slices, hub visualizations and >=500 m sensitivity are available in the frozen snapshot for review. The explicitly authorized Step 3A pilot now tests same-city q99_geo500 place co-batching while preserving the original SALAD loss and marginal place exposure. Hub/community weighting and loss modifications remain deferred. No VPR improvement, better retrieval, architectural-only structure, causal explanation or final training score is claimed by Step 2D.

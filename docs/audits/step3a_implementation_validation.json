@@ -1,0 +1,75 @@
+{
+  "execution_status": {
+    "blockers": [
+      "Required data/GSVCities/ Dataframes and Images are absent",
+      "Required data/Pittsburgh/ and data/mapillary/train_val validation datasets are absent",
+      "CUDA unavailable in this session; NVIDIA driver query failed",
+      "countermine-vpr lacks upstream faiss dependency"
+    ],
+    "evaluation_completed": false,
+    "full_runs_completed": false,
+    "no_alternative_dataset_copy_selected": true,
+    "shared_initialization_created": false,
+    "smoke_runs_completed": false,
+    "stage30": "stopped_before_model_creation"
+  },
+  "frozen_inputs": {
+    "core_q95_place_edges": 11069,
+    "core_q99_geo500_place_edges": 2735,
+    "core_q99_place_edges": 2827,
+    "eligible_same_city_edges": {
+      "Boston": 1083,
+      "London": 1003
+    },
+    "graph_places": 2000,
+    "immutable_inventory_file_count": 26560,
+    "immutable_inventory_metadata_drift_count": 0,
+    "salad_submodule_unchanged": true,
+    "step2d_place_edges_sha256": "4110c190518acb9caa786c991fd599095c237792a08bc65b6090170f6d7311a1",
+    "step2d_snapshot_sha256": "3445874bed26c519128dc0bb16ac57afa803a8ba541ec4d8fe79054608318f1b"
+  },
+  "log_sha256": {
+    "compileall.log": "0fa4ca865dec65c8b5c9146c622fdb8d4cf8c42a8f6fd4addd5bafa4540022f4",
+    "countermine_vpr_unittest.log": "9c4dae3f388e1ba85fc740e2e8b40fb71b0399ceca8801306293f6f395617e23",
+    "cpu_unittest.log": "012d4150834b226a92d18fd3c6b8b19c00ac3c57e0caeee966c900ccb46f8d95"
+  },
+  "scientific_snapshot_exported": false,
+  "scientific_training_executed": false,
+  "scope": {
+    "real_rgb_only": true,
+    "single_seed_pilot": true,
+    "statistical_significance_claimed": false,
+    "synthetic_images_used": false
+  },
+  "seed": 42,
+  "stage": "step3a_implementation_validation",
+  "step3a_code_hashes": {
+    "countermine/training/__init__.py": "7e9233b533b0918022ad14697c0623110ca950d8355a09e0fbe140a4176cc6cb",
+    "countermine/training/countermine_batch_sampler.py": "920df31b794e016850db4344e098834b36ff7e25b8ea3224551854c8e376e0c4",
+    "countermine/training/gsv_place_mapping.py": "be64e6c23584ef9d52ca82b88f097dbb458b8af74f731f4f444e5caa7901b21c",
+    "countermine/training/salad_datamodule.py": "e51fd0eaea6497f8db037a99b74ec86e8addc510f63d7b3b027c097a59bc88e8",
+    "countermine/training/step3a_audit.py": "52481dd70bf0fdba931436e1edf35b85278656e93840e19659ff26de0c1dcd8c",
+    "countermine/training/step3a_config.py": "ecc388a92cb727c71ef925aac12c020954eedc7be08dbb08793d306e6a70fe68",
+    "countermine/training/step3a_runtime.py": "5af443441455757c0a93c5e77d87e9fa6f2be8286e9b26cbc1970a99d6664b2e",
+    "tools/30_prepare_step3a_training.py": "5cdc7ddc694d94c6535f0d4c4025e8d03acf158d7fb29aca38450e8cc3ecf568",
+    "tools/31_train_step3a.py": "73a99b6c81988dc5948ce785f393a12963579906756d06d7ae74622703abf7de",
+    "tools/32_evaluate_step3a.py": "fec3a76dc3795ffb317e73cd6abc7111497e297c0b7f8544204786b0b484d409",
+    "tools/33_compare_step3a.py": "e59b63c83f409656b8d897242046cab53ef58c3d4e0939b417e9db21fea4bed9"
+  },
+  "tests": {
+    "compileall_passed": true,
+    "countermine_vpr_unittest_count": 75,
+    "countermine_vpr_unittest_environment_failure": "matplotlib not installed; CPU plotting test passed in default environment",
+    "countermine_vpr_unittest_passed_count": 74,
+    "cpu_unittest_count": 318,
+    "cpu_unittest_passed": true,
+    "real_cpu_lightning_fixture": {
+      "best_and_last_checkpoints_verified": true,
+      "metric_count": 9,
+      "optimizer_updates": 2,
+      "passed": true,
+      "scientific_run": false,
+      "validation_loaders": 3
+    }
+  }
+}
