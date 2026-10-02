@@ -11,6 +11,7 @@ Real RGB
   -> matched-random calibration of structural evidence
   -> CounterMine structural confusion graph pilot
   -> joint-null and fixed-graph topology-null validation
+  -> full-scale real-RGB structural mining and graph construction
   -> future pair-aware training
 ```
 
@@ -20,13 +21,14 @@ Real RGB
 | --- | --- |
 | Step 1: RGB candidate retrieval (1A–1C) | Completed |
 | Step 2A: real-RGB structural-confusion audit | Completed |
-| Step 2B: CounterMine structural confusion graph pilot | Completed; awaiting scientific review |
-| Step 2C: joint-null and topology-null validation | Implemented; experiment not yet run |
+| Step 2B: CounterMine structural confusion graph pilot | Completed |
+| Step 2C: joint-null and topology-null validation | Completed |
+| Step 2D: full-scale structural mining and graph construction | Implemented; full scientific run pending |
 | Step 3: training | Not yet implemented |
 
 Step 2A measures LightGlue matches divided by the smaller endpoint keypoint count. Candidate pairs must have different place IDs and be at least 250 m apart. A deterministic 5,000-pair pilot is sampled from the existing Top-50 retrieval pool after undirected canonicalization. Each candidate is compared with a random negative sharing its query anchor, city relation, and, for same-city pairs, geographic distance bin. Controls exclude the anchor's entire saved Top-50 list.
 
-Coverage, match concentration, entropy, and empirical null percentiles are descriptive diagnostics. Different places are not assumed to share a global geometric transform. No final CounterMine score, graph threshold, or training objective has been defined. The Step 2B pilot studies dataset-level topology using the completed 5,000-pair measurements. Scientific review must establish the structural-confusion hypothesis before scaling local measurement or changing training. No recognition performance improvement is claimed.
+Coverage, match concentration, entropy, and empirical null percentiles are descriptive diagnostics. Different places are not assumed to share a global geometric transform. No final CounterMine score, graph threshold, or training objective has been defined. The completed Step 2B/2C pilot supports the explicitly authorized Step 2D full-population measurement and graph audit. Training remains a later scientific decision. No recognition performance improvement is claimed.
 
 ## Running Step 2B
 
@@ -42,7 +44,7 @@ python tools/13_analyze_countermine_graph.py
 
 The frozen [Step 2A snapshot](docs/audits/step2a_rgb_structural_metrics.json) and curated figures remain unchanged. These CPU commands validate the existing measurements and never rerun ALIKED or LightGlue.
 
-The completed pilot retains 5,000 image edges. Its q95/q99 slices contain 352/77 edges, or 340/72 at >=500 m. Three place pairs repeat with two q95 supports; one has distinct core views on both sides, surviving the geographic sensitivity. See the [measured graph snapshot](docs/audits/step2b_countermine_graph_metrics.json) and [repeated-support montage](docs/audits/step2b_repeated_place_confusions.jpg). Semantic interpretation and any scaling decision remain for scientific review.
+The completed pilot retains 5,000 image edges. Its q95/q99 slices contain 352/77 edges, or 340/72 at >=500 m. Three place pairs repeat with two q95 supports; one has distinct core views on both sides, surviving the geographic sensitivity. See the [measured graph snapshot](docs/audits/step2b_countermine_graph_metrics.json) and [repeated-support montage](docs/audits/step2b_repeated_place_confusions.jpg). Step 2C tests those repeated supports against the fixed-graph null; they do not establish persistent pairwise aliasing.
 
 ## Running Step 2C
 
@@ -54,7 +56,19 @@ python tools/15_analyze_topology_null.py --permutations 1000 --seed 42
 python tools/16_export_step2c_audit.py
 ```
 
-These commands write runtime tables to `cache/countermine_rgb/step2c/`, four plots to `outputs/step2c/`, and a curated `docs/audits/step2c_null_topology_metrics.json` snapshot plus plots. The combined Step 2C audit has not been published yet. If stage outputs already exist from before the raw-ratio roundtrip fix, follow the [fresh-directory rerun instructions](docs/step_2c_null_topology.md#run) to preserve them and avoid mixing code hashes. Joint-null and topology-null evidence must be reviewed before spending GPU time on scaling; training remains unimplemented.
+The completed [Step 2C snapshot](docs/audits/step2c_null_topology_metrics.json) and four curated figures are frozen. Candidate joint q95/q99 rates are **7.04% / 1.54%**, compared with **2.20044% / 0.380076%** for matched-random controls, giving descriptive enrichment ratios **3.19936 / 4.05182**. Step 2B Spearman correlations of bottleneck with SALAD similarity/rank are **0.10648 / -0.03483**, supporting complementary structural evidence.
+
+With 1,000 stratified permutations (seed 42), q95/q99 largest place components are **29 / 6**, with empirical exceedance fractions **0.000999 / 0.006993**. Strong evidence is concentrated on the place graph. The three q95 repeated place pairs have exceedance **0.20879**, and the one strict independent multi-view pair has **0.51449**; independent repeated support itself is not unusual. q99 repeats have a smaller descriptive exceedance but no strict two-sided independent support. The active interpretation is **structural-confusion communities and hubs**, with no claim of persistent pairwise multi-view aliasing or VPR improvement. See [the measured Step 2C results and caveats](docs/step_2c_null_topology.md#measured-results).
+
+Historical Step 2A/2B/2C outputs remain immutable during Step 2D. The Step 2C commands document the completed protocol; Step 2D reads their frozen artifacts. Training remains unimplemented.
+
+## Running Step 2D
+
+[The full-scale protocol](docs/step_2d_full_countermine.md) reconstructs every eligible canonical candidate, extracts ALIKED once per original manifest image, validates exact feature/pilot replay, measures deterministic resumable LightGlue shards, and applies the frozen 4,999-control weak-ECDF calibration. It retains weak edges and predeclares q95/q975/q99/q995 diagnostic views and their >=500 m sensitivity variants.
+
+Run tools **17–24 in order**, with a one-shard benchmark between validation and full matching. Tool 25 optionally creates selected correspondence overlays from the bank. The complete commands, stop conditions, immutable inputs and output paths are in [the workflow](docs/step_2d_full_countermine.md#run-in-order). Do not continue after a replay or provenance mismatch. Step 2D writes only its own cache, output and curated artifact namespace; no sampler, SALAD change or training objective is implemented.
+
+The implementation is ready for the prescribed GPU workflow. No full-scale measurement, benchmark throughput, graph statistics or performance improvement is claimed until its logged run and export complete.
 
 ## Completed Step 2A workflow
 
