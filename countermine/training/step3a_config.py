@@ -91,6 +91,68 @@ def write_json(path, payload, *, root=ROOT):
             Path(temporary).unlink()
 
 
+def atomic_torch_save(payload, destination, *, torch_module=None, root=ROOT):
+    """Publish a new frozen tensor artifact from a same-directory binary stream.
+
+    Passing the open stream avoids PyTorch 2.1's pathname zip-writer restriction
+    on hidden temporary names. Existing final artifacts are never replaced by
+    normal preparation; an interrupted write leaves only a removable temporary.
+    """
+    destination = guard_step3a(destination, root)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if destination.exists() or destination.is_symlink():
+        raise FileExistsError("Frozen Step 3A tensor artifact already exists; refusing to overwrite it")
+    if torch_module is None:
+        import torch as torch_module
+    descriptor, temporary = tempfile.mkstemp(
+        prefix="initial_state_tmp_", suffix=".pt", dir=destination.parent,
+    )
+    temporary = Path(temporary)
+    try:
+        stream = os.fdopen(descriptor, "wb")
+        descriptor = None  # Ownership passes to the binary stream.
+        with stream:
+            torch_module.save(payload, stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+        # A final artifact may have appeared during serialization. It must be
+        # inspected and reused by Stage 30 rather than silently replaced.
+        if destination.exists() or destination.is_symlink():
+            raise FileExistsError("Frozen Step 3A tensor artifact appeared during serialization; refusing to overwrite it")
+        os.replace(temporary, destination)
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        temporary.unlink(missing_ok=True)
+    return destination
+
+
+def check_shared_initialization_transaction(shared_directory, *, root=ROOT):
+    """Clean only known temporary writes, then require a complete final pair.
+
+    This runs before dataset/model construction. Incomplete final artifacts
+    require human inspection; preparation must never regenerate over them.
+    """
+    shared = Path(shared_directory).resolve()
+    expected = Path(root).resolve() / "cache/countermine_rgb/step3a/shared"
+    if shared != expected:
+        raise ValueError("Shared initialization transaction must use the exact Step 3A shared directory")
+    state_path = guard_step3a(shared / "initial_state.pt", root)
+    summary_path = guard_step3a(shared / "initial_state_summary.json", root)
+    for temporary in shared.glob("initial_state_tmp_*.pt"):
+        # Never recurse into similarly named directories or follow symlinks.
+        if temporary.is_file() and not temporary.is_symlink():
+            temporary.unlink()
+    state_exists, summary_exists = state_path.exists(), summary_path.exists()
+    if state_exists != summary_exists:
+        raise ValueError(
+            "Incomplete shared initialization transaction. Preserve scientific provenance: "
+            "remove the incomplete shared Step 3A initialization artifacts manually "
+            "after inspection, then rerun Stage 30."
+        )
+    return state_exists
+
+
 def frozen_configuration():
     return deepcopy({
         "model": MODEL_CONFIG, "data": DATA_CONFIG, "trainer": TRAINER_CONFIG,
@@ -108,10 +170,63 @@ def code_hashes(root=ROOT):
     root = Path(root)
     files = sorted((root / "countermine/training").glob("*.py"))
     files += [root / "tools" / name for name in (
-        "30_prepare_step3a_training.py", "31_train_step3a.py",
+        "29_check_step3a_runtime.py", "30_prepare_step3a_training.py", "31_train_step3a.py",
         "32_evaluate_step3a.py", "33_compare_step3a.py",
     )]
     return {str(path.relative_to(root)): sha256_file(path) for path in files}
+
+
+def validate_source_hashes(prepared_hashes, root=ROOT, *, check_inventory=True):
+    """Accept exact source identity or one pinned monitoring-only release.
+
+    Never rewrite prepared hashes or exclude files by name. The compatibility
+    manifest binds both complete inventories to reviewed bytes, including the
+    sampler, model configuration, guards and monitoring implementation.
+    Export's subset mode retains support for archived partial source fixtures;
+    a compatibility transition always checks the complete live inventory.
+    """
+    root = Path(root).resolve()
+    if not isinstance(prepared_hashes, dict) or not prepared_hashes:
+        raise ValueError("Step 3A source hashes must be a nonempty mapping")
+    observed = {}
+    for name, digest in prepared_hashes.items():
+        if (not isinstance(name, str) or not name or Path(name).is_absolute()
+                or ".." in Path(name).parts or "\\" in name
+                or not (root / name).resolve().is_relative_to(root)):
+            raise ValueError("Step 3A source hash paths must be safe relative paths")
+        if (not isinstance(digest, str) or len(digest) != 64
+                or any(char not in "0123456789abcdef" for char in digest)):
+            raise ValueError("Step 3A source hashes must be SHA256 digests")
+        observed[name] = sha256_file(root / name)
+    if check_inventory:
+        observed = code_hashes(root)
+    report = {
+        "policy": "exact_source_identity", "prepared_code_hashes": deepcopy(prepared_hashes),
+        "executed_code_hashes": observed,
+    }
+    if observed == prepared_hashes:
+        return report
+    manifest_name = "countermine/training/step3a_monitoring_compatibility.json"
+    manifest_path = root / manifest_name
+    if manifest_path.is_file():
+        manifest = read_json(manifest_path)
+        if (manifest.get("schema_version") == 1
+                and manifest.get("prepared_code_hashes") == prepared_hashes):
+            complete_observed = code_hashes(root)
+            if manifest.get("compatible_code_hashes") == complete_observed:
+                report.update(
+                    policy="pinned_monitoring_only_transition",
+                    executed_code_hashes=complete_observed,
+                    compatibility_manifest=manifest_name,
+                    compatibility_manifest_sha256=sha256_file(manifest_path),
+                )
+                return report
+    differences = sorted(name for name in prepared_hashes.keys() | observed.keys()
+                         if prepared_hashes.get(name) != observed.get(name))
+    raise ValueError(
+        "Step 3A source hashes changed since shared preparation; "
+        "source is not the exact approved monitoring release: " + ", ".join(differences)
+    )
 
 
 def salad_identity(root=ROOT):
@@ -181,6 +296,8 @@ def create_model():
 
 
 def strict_load_initial_state(model, state_path, summary, *, torch_module=None):
+    if Path(state_path).stat().st_size == 0:
+        raise ValueError("Shared initialization tensor artifact is empty")
     if sha256_file(state_path) != summary["initial_state_sha256"]:
         raise ValueError("Shared initialization SHA256 mismatch")
     if summary["model_configuration"] != MODEL_CONFIG:
@@ -199,8 +316,7 @@ def check_preparation(paths):
     provenance = preparation["provenance"]
     if not preparation.get("complete") or provenance["seed"] != SEED:
         raise ValueError("Stage 30 preparation must be complete for seed 42")
-    if provenance["step3a_code_hashes"] != code_hashes(paths["root"]):
-        raise ValueError("Step 3A source hashes changed since shared preparation")
+    validate_source_hashes(provenance["step3a_code_hashes"], paths["root"])
     if provenance["step2d_snapshot_sha256"] != sha256_file(paths["snapshot"]):
         raise ValueError("Frozen Step 2D snapshot changed")
     if provenance["step2d_place_edges_sha256"] != sha256_file(paths["graph"]):

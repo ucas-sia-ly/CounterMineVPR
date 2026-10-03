@@ -17,6 +17,10 @@ from pathlib import Path, PureWindowsPath
 import tempfile
 from typing import Any, Mapping, Sequence
 
+from countermine.training.step3a_runtime import (
+    RUNTIME_FIELDS, critical_provenance, runtime_differences,
+)
+
 MODES = ("baseline", "countermine_q99_geo500")
 RECALL_METRICS = tuple(f"{dataset}/R{k}" for dataset in
                        ("pitts30k_val", "pitts30k_test", "msls_val") for k in (1, 5, 10))
@@ -24,7 +28,7 @@ FIGURE_NAMES = ("recall_curves.png", "training_loss.png", "structural_exposure.p
 PROVENANCE_FIELDS = (
     "step2d_snapshot_sha256", "step2d_place_edges_sha256", "salad_submodule_commit",
     "step3a_code_hashes", "initial_state_sha256", "seed", "real_rgb_only",
-    "synthetic_images_used",
+    "synthetic_images_used", "runtime",
 )
 ZERO_INVARIANTS = (
     "accidentally_split_pair_count", "duplicate_place_count", "missing_place_count",
@@ -142,6 +146,9 @@ def _validate_provenance(provenance: Mapping, reference: Mapping | None = None) 
         raise ValueError("Step 3A requires seed 42 and original real RGB only")
     if not isinstance(provenance["salad_submodule_commit"], str) or not provenance["salad_submodule_commit"]:
         raise ValueError("SALAD submodule identity is required")
+    runtime = provenance["runtime"]
+    if not isinstance(runtime, dict) or any(key not in runtime for key in RUNTIME_FIELDS):
+        raise ValueError("complete observed Step 3A runtime metadata is required")
     code_hashes = provenance["step3a_code_hashes"]
     if not isinstance(code_hashes, dict) or not code_hashes:
         raise ValueError("Step 3A code hashes are required")
@@ -154,7 +161,7 @@ def _validate_provenance(provenance: Mapping, reference: Mapping | None = None) 
                 PureWindowsPath(name).is_absolute() or ".." in Path(name).parts or "\\" in name):
             raise ValueError("SALAD source names must be safe relative paths inside salad/")
         _digest(digest, name)
-    if reference is not None and provenance != reference:
+    if reference is not None and critical_provenance(provenance) != critical_provenance(reference):
         raise ValueError("run provenance differs from shared preparation")
 
 
@@ -276,7 +283,8 @@ def build_comparison(shared: dict, runs: Mapping[str, dict], evaluations: Mappin
                             rel_tol=1e-10, abs_tol=1e-12):
             raise ValueError("average b_acc differs from full epoch metrics")
         training[mode] = {"epochs": clean_epochs, "best_epoch": best,
-                          "final_train_loss": final_loss, "average_b_acc": average_b_acc}
+                          "final_train_loss": final_loss, "average_b_acc": average_b_acc,
+                          "runtime": deepcopy(run["provenance"]["runtime"])}
         if evaluated.get("complete") is not True or evaluated.get("mode") != mode or evaluated.get("seed") != 42:
             raise ValueError("completed evaluation of both full conditions is required")
         if evaluated.get("checkpoint_selection") != "best_pitts30k_val_R1" or evaluated.get("best_epoch") != best:
@@ -286,7 +294,8 @@ def build_comparison(shared: dict, runs: Mapping[str, dict], evaluations: Mappin
         if digest != run["best_checkpoint_sha256"]:
             raise ValueError("evaluation checkpoint differs from the selected training checkpoint")
         evaluation[mode] = {"checkpoint_selection": "best_pitts30k_val_R1", "best_epoch": best,
-                            "checkpoint_sha256": digest, "metrics": _recalls(evaluated["metrics"])}
+                            "checkpoint_sha256": digest, "metrics": _recalls(evaluated["metrics"]),
+                            "runtime": deepcopy(evaluated["provenance"]["runtime"])}
         if len(plans[mode]) != 4:
             raise ValueError("every full epoch requires a batch-plan audit")
         sampler[mode] = []
@@ -328,6 +337,19 @@ def build_comparison(shared: dict, runs: Mapping[str, dict], evaluations: Mappin
                 "dataset_metadata": deepcopy(shared["dataset_metadata"]), "sampler_audit": sampler,
                 "training_exposure_comparison": exposure_comparison, "training": training,
                 "evaluation": {**evaluation, "descriptive_countermine_minus_baseline": deltas},
+                "runtime_comparison": {
+                    "differences_are_descriptive": True,
+                    "training_from_preparation": {
+                        mode: runtime_differences(provenance["runtime"], training[mode]["runtime"])
+                        for mode in MODES},
+                    "evaluation_from_training": {
+                        mode: runtime_differences(training[mode]["runtime"], evaluation[mode]["runtime"])
+                        for mode in MODES},
+                    "between_training_conditions": runtime_differences(
+                        training[MODES[0]]["runtime"], training[MODES[1]]["runtime"]),
+                    "between_evaluation_conditions": runtime_differences(
+                        evaluation[MODES[0]]["runtime"], evaluation[MODES[1]]["runtime"]),
+                },
                 "scope": {"single_seed_pilot": True, "statistical_significance_claimed": False,
                           "description": "single-seed Step 3A pilot; descriptive retrieval deltas only",
                           "intervention": "place co-occurrence only; original SALAD architecture, loss and miner"}}
@@ -470,8 +492,13 @@ def export_comparison(repo_root: str | Path, *, seed: int = 42, runtime_dir: str
         raise ValueError("frozen Step 2D place graph hash does not match")
     checks = {frozen_snapshot: provenance["step2d_snapshot_sha256"], graph: graph_digest,
               runtime / "shared/initial_state.pt": provenance["initial_state_sha256"]}
+    from countermine.training.step3a_config import validate_source_hashes
+    source_compatibility = validate_source_hashes(
+        provenance["step3a_code_hashes"], root, check_inventory=False)
     checks.update({_relative_file(root, name, "Step 3A source"): digest
-                   for name, digest in provenance["step3a_code_hashes"].items()})
+                   for name, digest in source_compatibility["executed_code_hashes"].items()})
+    if "compatibility_manifest" in source_compatibility:
+        checks[_relative_file(root, source_compatibility["compatibility_manifest"], "compatibility manifest")] = source_compatibility["compatibility_manifest_sha256"]
     salad_hashes = provenance.get("salad_source_hashes")
     if not isinstance(salad_hashes, dict) or not salad_hashes:
         raise ValueError("SALAD source hashes are required before scientific export")
@@ -533,11 +560,12 @@ def export_comparison(repo_root: str | Path, *, seed: int = 42, runtime_dir: str
     for path, expected in {**checks, **source_hashes}.items():
         if sha256_file(path) != expected:
             raise ValueError(f"Step 3A input changed during export: {path.name}")
-    destinations = [target, runtime / "edge_cobatching_metrics.json"]
+    destinations = [target, runtime / "edge_cobatching_metrics.json", output / "source_compatibility.json"]
     destinations.extend(root / "docs/audits" / ("step3a_" + name) for name in FIGURE_NAMES)
     guard_step3a(destinations, root)
     for name in FIGURE_NAMES:
         atomic_bytes(root / "docs/audits" / ("step3a_" + name), (output / name).read_bytes())
     write_finite_json(runtime / "edge_cobatching_metrics.json", result)
     write_finite_json(target, result)
+    write_finite_json(output / "source_compatibility.json", source_compatibility)
     return result

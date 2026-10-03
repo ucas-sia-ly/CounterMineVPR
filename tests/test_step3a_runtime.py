@@ -1,6 +1,7 @@
 """CPU engineering checks for callbacks, AMP skips and complete epoch evidence."""
 
 import json
+import importlib.util
 from pathlib import Path
 import sys
 import tempfile
@@ -115,6 +116,59 @@ class Step3ARuntimeTests(unittest.TestCase):
             with self.subTest(value=type(value).__name__):
                 with self.assertRaisesRegex(ValueError, "Nonfinite Step 3A metric"):
                     runtime.finite_metrics({"loss": value})
+
+    def test_critical_provenance_strips_only_exact_runtime_without_mutation(self):
+        provenance = {**self.provenance, "runtime": {"gpu_name": "Test GPU"},
+                      "Runtime": {"gpu_name": "Still critical"},
+                      "unknown_future_invariant": {"runtime": "nested value stays critical"}}
+        observed = runtime.critical_provenance(provenance)
+        self.assertNotIn("runtime", observed)
+        self.assertEqual(observed["Runtime"], {"gpu_name": "Still critical"})
+        self.assertEqual(observed["unknown_future_invariant"],
+                         {"runtime": "nested value stays critical"})
+        observed["unknown_future_invariant"]["runtime"] = "updated copy"
+        self.assertEqual(provenance["unknown_future_invariant"]["runtime"],
+                         "nested value stays critical")
+        self.assertIn("runtime", provenance)
+
+    def test_smoke_gate_accepts_observed_runtime_changes(self):
+        self.provenance["runtime"] = {"gpu_name": "Current GPU", "torch_version": "2.1.0+cu121"}
+        paths, _ = self.smoke_files(change=lambda summary: summary["provenance"].update(
+            runtime={"gpu_name": "Prior GPU", "torch_version": "2.1.0+local"}))
+        runtime.require_smokes(paths, self.provenance)
+
+    def test_smoke_gate_preserves_seed_code_and_unknown_critical_identity(self):
+        paths, files = self.smoke_files()
+        for field, value in (("seed", 7), ("code_hashes", {"training.py": "d" * 64}),
+                             ("unknown_invariant", "changed"), ("Runtime", {"gpu_name": "GPU"})):
+            with self.subTest(field=field):
+                path, summary = files[1]
+                original = summary["provenance"]
+                summary["provenance"] = {**original, field: value}
+                path.write_text(json.dumps(summary))
+                with self.assertRaisesRegex(ValueError, "provenance differs"):
+                    runtime.require_smokes(paths, self.provenance)
+                summary["provenance"] = original
+                path.write_text(json.dumps(summary))
+
+    def test_training_and_evaluation_gate_runtime_before_reading_or_constructing(self):
+        root = Path(__file__).resolve().parents[1]
+        for tool, stage in (("31_train_step3a", "train"), ("32_evaluate_step3a", "evaluate")):
+            with self.subTest(stage=stage):
+                spec = importlib.util.spec_from_file_location(tool, root / "tools" / (tool + ".py"))
+                cli = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(cli)
+                with patch.object(cli, "run_preflight", side_effect=RuntimeError("runtime unavailable")) as preflight, \
+                        patch.object(cli, "validate_dataset_paths") as data_check, \
+                        patch.object(cli, "read_json") as artifact_read, \
+                        patch.object(cli, "create_model") as model:
+                    with self.assertRaisesRegex(RuntimeError, "runtime unavailable"):
+                        cli.main(["--mode", "baseline"])
+                    preflight.assert_called_once_with(stage=stage, root=root,
+                                                       save_report=False, progress=False)
+                    data_check.assert_not_called()
+                    artifact_read.assert_not_called()
+                    model.assert_not_called()
 
     def smoke_files(self, *, change=None):
         paths = {"runtime": self.root / "cache/countermine_rgb/step3a"}

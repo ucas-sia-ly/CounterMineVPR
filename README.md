@@ -24,7 +24,7 @@ Real RGB
 | Step 2B: CounterMine structural confusion graph pilot | Completed |
 | Step 2C: joint-null and topology-null validation | Completed |
 | Step 2D: full-scale structural mining and graph construction | Completed |
-| Step 3A: edge-aware place co-batching training pilot | Implemented; scientific runs blocked by missing training data and GPU runtime |
+| Step 3A: edge-aware place co-batching training pilot | Runtime hardening implemented; scientific training awaits CUDA execution |
 
 Step 2A measures LightGlue matches divided by the smaller endpoint keypoint count. Candidate pairs must have different place IDs and be at least 250 m apart. A deterministic 5,000-pair pilot is sampled from the existing Top-50 retrieval pool after undirected canonicalization. Each candidate is compared with a random negative sharing its query anchor, city relation, and, for same-city pairs, geographic distance bin. Controls exclude the anchor's entire saved Top-50 list.
 

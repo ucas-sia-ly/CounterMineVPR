@@ -16,6 +16,7 @@ from countermine.training.step3a_audit import (
     guard_step3a, sha256_file, validate_portable_json, write_finite_json,
 )
 from countermine.training.step3a_config import frozen_configuration, TREATMENT_DEFINITION
+from countermine.training.step3a_runtime import RUNTIME_FIELDS
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -25,7 +26,10 @@ def artifacts():
     provenance = {"step2d_snapshot_sha256": digest, "step2d_place_edges_sha256": digest,
                   "initial_state_sha256": digest, "salad_submodule_commit": "b" * 40,
                   "step3a_code_hashes": {"countermine/training/fixture.py": digest},
-                  "seed": 42, "real_rgb_only": True, "synthetic_images_used": False}
+                  "seed": 42, "real_rgb_only": True, "synthetic_images_used": False,
+                  "runtime": {name: None for name in RUNTIME_FIELDS}}
+    provenance["runtime"].update(python_version="3.11.8", torch_version="2.1.0+cu121",
+                                 gpu_name="Test CUDA GPU", gpu_capability=[8, 9])
     mapping = {"total_training_places": 120, "boston_training_places": 60,
                "london_training_places": 60, "per_city_training_places": {"Boston": 60, "London": 60},
                "countermine_graph_places": 6, "mapped_graph_places": 6, "unmapped_graph_places": 0,
@@ -78,6 +82,53 @@ def artifacts():
 
 
 class Step3AAuditTests(unittest.TestCase):
+    def test_runtime_versions_and_gpu_names_are_recorded_without_machine_locking(self):
+        fixture = artifacts()
+        treatment = MODES[1]
+        fixture[1][treatment]["provenance"]["runtime"].update(
+            gpu_name="Another CUDA GPU", torch_version="2.1.0+local", driver_version="patch-B")
+        fixture[2][treatment]["provenance"]["runtime"].update(gpu_name="Evaluation GPU")
+        snapshot = build_comparison(*fixture)
+        self.assertEqual(snapshot["training"][treatment]["runtime"]["gpu_name"], "Another CUDA GPU")
+        self.assertEqual(snapshot["evaluation"][treatment]["runtime"]["gpu_name"], "Evaluation GPU")
+        differences = snapshot["runtime_comparison"]
+        self.assertTrue(differences["differences_are_descriptive"])
+        self.assertEqual(differences["between_training_conditions"]["gpu_name"],
+                         {"reference": "Test CUDA GPU", "observed": "Another CUDA GPU"})
+        self.assertEqual(differences["evaluation_from_training"][treatment]["gpu_name"],
+                         {"reference": "Another CUDA GPU", "observed": "Evaluation GPU"})
+        self.assertIn("torch_version", differences["training_from_preparation"][treatment])
+        json.dumps(snapshot, allow_nan=False)
+
+    def test_runtime_exemption_preserves_every_other_provenance_field(self):
+        changes = (
+            ("initial_state_sha256", "f" * 64),
+            ("step3a_code_hashes", {"countermine/training/fixture.py": "f" * 64}),
+            ("salad_submodule_commit", "c" * 40),
+            ("step2d_place_edges_sha256", "f" * 64),
+            ("step2d_snapshot_sha256", "f" * 64),
+            ("salad_source_hashes", {"salad/vpr_model.py": "f" * 64}),
+            ("seed", 7),
+            ("unknown_future_invariant", "changed"),
+            ("Runtime", {"gpu_name": "case-sensitive critical field"}),
+        )
+        for key, value in changes:
+            for source in (1, 2):
+                with self.subTest(field=key, source=source):
+                    fixture = artifacts()
+                    fixture[source][MODES[1]]["provenance"][key] = value
+                    with self.assertRaises(ValueError):
+                        build_comparison(*fixture)
+
+    def test_completed_snapshot_requires_runtime_for_each_scientific_phase(self):
+        for source in (0, 1, 2):
+            with self.subTest(source=source):
+                fixture = artifacts()
+                provenance = (fixture[0] if source == 0 else fixture[source][MODES[0]])["provenance"]
+                del provenance["runtime"]
+                with self.assertRaisesRegex(ValueError, "provenance"):
+                    build_comparison(*fixture)
+
     def test_descriptive_snapshot_preserves_full_epoch_marginals_and_exposure(self):
         snapshot = build_comparison(*artifacts())
         self.assertTrue(snapshot["complete"])

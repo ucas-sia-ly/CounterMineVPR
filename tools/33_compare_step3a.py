@@ -7,6 +7,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from countermine.training.step3a_audit import RECALL_METRICS, export_comparison
+from countermine.training.runtime_preflight import run_preflight
 
 
 def main():
@@ -17,9 +18,10 @@ def main():
     parser.add_argument("--snapshot", type=Path, default=ROOT / "docs/audits/step3a_edge_cobatching_metrics.json")
     args = parser.parse_args()
     try:
+        run_preflight(stage="export", root=ROOT, save_report=False)
         snapshot = export_comparison(ROOT, seed=args.seed, runtime_dir=args.runtime_dir.resolve(),
                                      output_dir=args.output_dir.resolve(), snapshot_path=args.snapshot.resolve())
-    except (ValueError, OSError, KeyError, TypeError) as error:
+    except (ValueError, OSError, KeyError, TypeError, RuntimeError) as error:
         parser.exit(1, f"error: {error}\n")
     evaluation = snapshot["evaluation"]
     print("single-seed Step 3A pilot — descriptive comparison")

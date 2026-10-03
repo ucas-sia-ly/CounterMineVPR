@@ -11,10 +11,18 @@ sys.path.insert(0, str(ROOT))
 from countermine.training.step3a_config import (
     MODES, SEED, TRAINER_CONFIG, resolved_paths, validate_dataset_paths, enter_salad,
     seed_runtime, create_model, strict_load_initial_state, check_preparation, read_json,
-    guard_step3a, write_json,
+    guard_step3a, write_json, validate_source_hashes,
 )
 from countermine.training.countermine_batch_sampler import load_edge_bundle
-from countermine.training.step3a_runtime import require_smokes, create_training_audit_callback, training_summary
+from countermine.training.runtime_preflight import run_preflight, configure_cublas_workspace
+from countermine.training.cached_dinov2 import cached_dinov2_runtime
+from countermine.training.step3a_runtime import (
+    critical_provenance, runtime_differences, require_smokes,
+    create_training_audit_callback, training_summary,
+)
+from countermine.training.step3a_monitoring import (
+    monitoring_configuration, create_training_loggers, create_monitoring_callbacks,
+)
 
 
 def batch_limit(value):
@@ -34,6 +42,10 @@ def main(argv=None):
     parser.add_argument("--limit-train-batches", type=batch_limit, default=1.0)
     parser.add_argument("--limit-val-batches", type=batch_limit, default=1.0)
     parser.add_argument("--smoke", action="store_true")
+    parser.add_argument("--wandb", action="store_true", help="Enable optional Weights & Biases scalar logging")
+    parser.add_argument("--wandb-project", default="CounterMineVPR")
+    parser.add_argument("--wandb-entity")
+    parser.add_argument("--wandb-offline", action="store_true")
     args = parser.parse_args(argv)
     if args.smoke:
         if (args.max_epochs, args.limit_train_batches, args.limit_val_batches) != (1, 3, 2):
@@ -42,29 +54,33 @@ def main(argv=None):
           or not isinstance(args.limit_val_batches, float)
           or args.limit_train_batches != 1.0 or args.limit_val_batches != 1.0):
         parser.error("Scientific runs require 4 full epochs; limits belong only to the separate smoke checks")
+    cublas_workspace_config = configure_cublas_workspace()
     paths = resolved_paths(ROOT)
+    preflight = run_preflight(stage="train", root=ROOT, save_report=False, progress=False)
     metadata = validate_dataset_paths(paths)
     preparation = check_preparation(paths)
+    source_compatibility = validate_source_hashes(
+        preparation["provenance"]["step3a_code_hashes"], ROOT)
     if preparation["dataset_metadata"] != metadata:
         raise ValueError("Dataset metadata changed after shared preparation")
-    provenance = preparation["provenance"]
+    provenance = deepcopy(preparation["provenance"])
+    provenance["runtime"] = deepcopy(preflight["runtime"])
     if not args.smoke:
         require_smokes(paths, provenance)
         if args.mode == MODES[1]:
             baseline = read_json(paths["runtime"] / MODES[0] / "seed42/training_summary.json")
-            if not baseline.get("complete") or baseline.get("smoke") or baseline["provenance"] != provenance:
+            if (not baseline.get("complete") or baseline.get("smoke") or
+                    critical_provenance(baseline["provenance"]) != critical_provenance(provenance)):
                 raise ValueError("Complete the independent full baseline before the CounterMine run")
     run = paths["runtime"] / ("smoke" if args.smoke else "") / args.mode / "seed42"
     run = guard_step3a(run)
     if run.exists() and any(run.iterdir()):
         raise ValueError("Run directory already contains artifacts; Step 3A does not resume or overwrite conditions")
     edges = load_edge_bundle(paths["graph"], paths["snapshot"])
-    os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
     enter_salad(paths)
     seed_runtime(args.seed)
     import torch
     import pytorch_lightning as pl
-    from pytorch_lightning.loggers import CSVLogger
     from countermine.training.salad_datamodule import build_datamodule
     if not torch.cuda.is_available():
         raise RuntimeError("Step 3A smoke and full training require one available CUDA GPU")
@@ -78,7 +94,8 @@ def main(argv=None):
                           expected_epoch0_place_order=preparation["epoch0_plans"][MODES[0]]["dataset_place_order_sha256"],
                           baseline_plan_dir=(paths["runtime"] / MODES[0] / "seed42/batch_plans"
                                              if args.mode != MODES[0] and not args.smoke else None))
-    model = create_model()
+    with cached_dinov2_runtime(torch_module=torch) as model_loading:
+        model = create_model()
     initial = read_json(paths["shared"] / "initial_state_summary.json")
     strict_load_initial_state(model, paths["shared"] / "initial_state.pt", initial)
     checkpoint = pl.callbacks.ModelCheckpoint(
@@ -90,17 +107,29 @@ def main(argv=None):
                                          provenance=provenance, root=ROOT)
     config = deepcopy(TRAINER_CONFIG)
     config["max_epochs"] = args.max_epochs
+    monitoring = monitoring_configuration(
+        mode=args.mode, seed=args.seed, smoke=args.smoke, wandb=args.wandb,
+        wandb_project=args.wandb_project, wandb_entity=args.wandb_entity,
+        wandb_offline=args.wandb_offline,
+    )
     trainer = pl.Trainer(
         **config, deterministic=True, default_root_dir=str(run),
-        callbacks=[audit, checkpoint], logger=CSVLogger(str(run), name="logs", version=0),
+        callbacks=[audit, checkpoint, *create_monitoring_callbacks()],
+        logger=create_training_loggers(run, monitoring),
         limit_train_batches=args.limit_train_batches, limit_val_batches=args.limit_val_batches,
     )
     write_json(run / "run_configuration.json", {
         "mode": args.mode, "smoke": args.smoke, "seed": args.seed,
+        "monitoring": monitoring,
+        "source_compatibility": source_compatibility,
+        "model_loading": model_loading,
         "provenance": provenance, "configuration": preparation["configuration"],
+        "runtime_differences_from_preparation": runtime_differences(
+            preparation["provenance"]["runtime"], provenance["runtime"]),
         "actual_max_epochs": args.max_epochs, "limit_train_batches": args.limit_train_batches,
         "limit_val_batches": args.limit_val_batches,
         "deterministic_algorithms": True, "tf32": False, "cudnn_benchmark": False,
+        "cublas_workspace_config": cublas_workspace_config,
     })
     trainer.fit(model=model, datamodule=dm)
     summary = training_summary(trainer=trainer, callback=audit, checkpoint=checkpoint,

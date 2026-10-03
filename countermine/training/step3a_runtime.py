@@ -1,12 +1,44 @@
-"""Engineering callbacks for Step 3A; no model, miner or loss overrides."""
+"""Engineering callbacks and runtime-independent Step 3A identity checks.
+
+Importing this module does not import torch or any model runtime.
+"""
+from copy import deepcopy
 import math
 from pathlib import Path
+from collections.abc import Mapping
 
 from countermine.training.step3a_config import (
     DATA_CONFIG, TRAINER_CONFIG, MODES, SEED, read_json, write_json, sha256_file,
 )
 
 RECALL_KEYS = tuple(f"{name}/R{k}" for name in DATA_CONFIG["val_set_names"] for k in (1, 5, 10))
+RUNTIME_FIELDS = (
+    "python_version", "torch_version", "torchvision_version", "lightning_version",
+    "pytorch_metric_learning_version", "faiss_version", "xformers_version", "numpy_version",
+    "pandas_version", "cuda_version", "cudnn_version", "gpu_name", "gpu_capability",
+)
+
+
+def critical_provenance(provenance):
+    """Retain every scientific invariant, excluding only observed runtime metadata.
+
+    Unknown present and future provenance fields remain identity-critical.
+    Runtime versions and GPU names are recorded evidence, not a machine lock.
+    """
+    if not isinstance(provenance, Mapping):
+        raise ValueError("Step 3A provenance must be a mapping")
+    return deepcopy({key: value for key, value in provenance.items() if key != "runtime"})
+
+
+def runtime_differences(reference, observed):
+    """Describe changed runtime fields without accepting/rejecting a condition."""
+    if not isinstance(reference, Mapping) or not isinstance(observed, Mapping):
+        raise ValueError("Step 3A runtime metadata must be a mapping")
+    return {
+        key: {"reference": deepcopy(reference.get(key)), "observed": deepcopy(observed.get(key))}
+        for key in sorted(set(reference) | set(observed))
+        if key not in reference or key not in observed or reference[key] != observed[key]
+    }
 
 
 def finite_metrics(values):
@@ -28,7 +60,7 @@ def require_smokes(paths, provenance):
         summary = read_json(path)
         if not summary.get("complete") or not summary.get("smoke") or summary["mode"] != mode:
             raise ValueError("Both independent smoke conditions must pass before full training")
-        if summary["provenance"] != provenance:
+        if critical_provenance(summary["provenance"]) != critical_provenance(provenance):
             raise ValueError("Smoke provenance differs from current shared initialization/source")
         checks = summary["engineering_checks"]
         for name in ("shared_initialization_strict_load", "batch_shape_and_labels", "finite_loss",

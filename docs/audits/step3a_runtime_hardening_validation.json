@@ -1,0 +1,214 @@
+{
+  "complete": true,
+  "engineering_only": true,
+  "environment_manifest_sha256": "28ae57936aae47ed46f22de53810d0c61bda87a058a7f163b02fdec99d7d0159",
+  "log_sha256": {
+    "compileall.log": "3f0eccd0a18bab2b939158b190feae6fce3c7b73f7b71c6bbbc9b6cb8143d1bd",
+    "countermine_vpr_unittest.log": "7ae3306e0bd4fcdbe24d927cf4b4533fa29b753c6eea25cebfca536b82ce98a7",
+    "cpu_unittest.log": "2e9c29f3ee0ca536e5bd907a3fee79544a18239025bc0ae47a1d847b43e50099",
+    "prepare_preflight.log": "877d14d8eeb799e19fb948d99569d85e0fd497b5daa5b4429c02b188ba448e25",
+    "stage30.log": "d1e9ea751a38af88be8331e33fc1ff090be17293c6708ab621c637b3d78a25d5",
+    "train_preflight.log": "4890860baab5137b2aab3890e85f019559a7b785a819a8cdc4c10645ecba7944"
+  },
+  "preflight": {
+    "dataset_status": {
+      "availability": {
+        "data/GSVCities/Images": true,
+        "data/Pittsburgh/datasets": true,
+        "data/Pittsburgh/queries_real": true,
+        "data/mapillary/train_val": true,
+        "salad/datasets/msls_val": true
+      },
+      "metadata_file_count": 30,
+      "required_training_city_csv_count": 23,
+      "training_city_csv_count": 23
+    },
+    "frozen_graph": {
+      "eligible_same_city_edges": {
+        "Boston": 1083,
+        "London": 1003
+      },
+      "place_count": 2000,
+      "sha256": "4110c190518acb9caa786c991fd599095c237792a08bc65b6090170f6d7311a1",
+      "snapshot_sha256": "3445874bed26c519128dc0bb16ac57afa803a8ba541ec4d8fe79054608318f1b"
+    },
+    "gpu": {
+      "cuda_available": false,
+      "cuda_version": "12.1",
+      "cudnn_version": 8902,
+      "device_count": 0,
+      "gpu_capability": null,
+      "gpu_name": null,
+      "total_vram_bytes": null
+    },
+    "package_versions": {
+      "faiss": "1.7.4",
+      "matplotlib": "3.10.9",
+      "numpy": "1.26.4",
+      "pandas": "2.1.3",
+      "python": "3.10.21",
+      "pytorch_lightning": "2.1.2",
+      "pytorch_metric_learning": "2.3.0",
+      "torch": "2.1.0",
+      "torchvision": "0.16.0",
+      "xformers": "0.0.22.post7"
+    },
+    "prepare_complete": true,
+    "runtime_preflight_report_sha256": "5866f3318249d81f3fa871418e6dc313f9583d16956253a9b7b1de950b98a68b",
+    "train_blocker": "CUDA unavailable in this session",
+    "train_passed": false
+  },
+  "preservation": {
+    "immutable_file_inventory_count": 26560,
+    "immutable_metadata_drift_count": 0,
+    "salad_submodule_unchanged": true,
+    "scientific_configuration_unchanged": true
+  },
+  "provenance": {
+    "initial_state_sha256": "888790bb6f61d69c64cfc25c0f450a74e00cb248b4a41909a2e0b0486e7fce1f",
+    "real_rgb_only": true,
+    "runtime": {
+      "cuda_version": "12.1",
+      "cudnn_version": 8902,
+      "faiss_version": "1.7.4",
+      "gpu_capability": null,
+      "gpu_name": null,
+      "lightning_version": "2.1.2",
+      "numpy_version": "1.26.4",
+      "pandas_version": "2.1.3",
+      "python_version": "3.10.21",
+      "pytorch_metric_learning_version": "2.3.0",
+      "torch_version": "2.1.0",
+      "torchvision_version": "0.16.0",
+      "xformers_version": "0.0.22.post7"
+    },
+    "salad_source_hashes": {
+      "salad/dataloaders/GSVCitiesDataloader.py": "a2b5a5e3a8db85d3242fbabece740294365be687496a6e6887dfe08dc8de7ceb",
+      "salad/dataloaders/GSVCitiesDataset.py": "1cf6ff9d1242eba46f4046bda2176cdf75f9f468fcb156e31e3830c7f18ec83b",
+      "salad/dataloaders/MapillaryDataset.py": "fae3e5466b226b1d7d6c255a50ce2b8e5f96e36c3fa7212ecec3e65712c94cd8",
+      "salad/dataloaders/PittsburgDataset.py": "9ff3c8509a484cbeb878933df45bfdf1a861bfd9500f4d9505a7d2fff3d8394a",
+      "salad/dataloaders/val/MapillaryDataset.py": "d6bb8696294bb80e464ffc0307dcecdfae891f2470fcc4cf77e69dde1da75816",
+      "salad/dataloaders/val/MapillaryTestDataset.py": "fdd5d83952938a73a2f24b80ab4caa0b4ba4d859581796e585edf9d070f56be4",
+      "salad/dataloaders/val/NordlandDataset.py": "1cba2512f1fa98ce4c745313822bfe48ac324f42fef5ffc7613d56d70e13bb96",
+      "salad/dataloaders/val/PittsburghDataset.py": "5f513b3be04ae22c50bdc54fbeadfb8c46a6211ff917306fe2c0e136fdba8a90",
+      "salad/dataloaders/val/SPEDDataset.py": "968ea4f424faf0794c0c178f67ffbcb392280503a8b4fa0f229e8518a954216d",
+      "salad/main.py": "35dde65de1212692c5193a24bb7f2aab5d689264d0428aa8ef34f1dd9fdd1e72",
+      "salad/models/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "salad/models/aggregators/__init__.py": "41fd0184bbe452d2a0d639c7893a580b5fa22570c6c5a8a35028fe32aef05567",
+      "salad/models/aggregators/convap.py": "63169b7a8d9733b1aa5b5d9abb2aa2d25e97719b6cf62caf5020b6e0ab547d85",
+      "salad/models/aggregators/cosplace.py": "32fad715d8c7d3a87d889eedcbc2d9a436a9015a893c582f5bdd709129aa4c5e",
+      "salad/models/aggregators/gem.py": "afbd199e540cd30f70495f33e9479825ab611e68bab752c423ba18321e7be9a9",
+      "salad/models/aggregators/mixvpr.py": "f4de72322eaa3873f506753319e2e406f3b27550733c1ec7e3987596809943dd",
+      "salad/models/aggregators/salad.py": "7c24560a1653a167aeea248f4566b445aa5a39dacc252f13adbac2f1a4f68726",
+      "salad/models/backbones/__init__.py": "254eff65523d772119003cf35898eab1db05504e274929b779c9b2b999a4bcc9",
+      "salad/models/backbones/dinov2.py": "8081ce51e422d326ce233e8c515c1c4d38d0b34d550558a30eb4013359d844c9",
+      "salad/models/backbones/resnet.py": "5a9e7f7b26b27148b67eaeea3c5fd59410a577338dee0647b62b1bc709195ddd",
+      "salad/models/helper.py": "54ae08e1fbb048f8f06f951529562b5bcba28f497285f7294b9461eb76332147",
+      "salad/utils/__init__.py": "fdebae551769effe420aa4cfe12bdaa3f43fd784e7d402d43b5fe4c4e62ed461",
+      "salad/utils/losses.py": "28c35a557aba58c7e3c2c7c499ae5b1c4894c3979f0d2c104ebb4e2e559818f0",
+      "salad/utils/validation.py": "494783c138b4ca217150024dd3d25947da345303dfc9e4d4f19279939af43330",
+      "salad/vpr_model.py": "6beae66f4c9d85c7084627f3c8f95c02f1d2df548cdb318b3134a60616960a39"
+    },
+    "salad_submodule_commit": "6aede13a3f6c25750bf7fde10209c06cb73060bb",
+    "seed": 42,
+    "step2d_place_edges_sha256": "4110c190518acb9caa786c991fd599095c237792a08bc65b6090170f6d7311a1",
+    "step2d_snapshot_sha256": "3445874bed26c519128dc0bb16ac57afa803a8ba541ec4d8fe79054608318f1b",
+    "step3a_code_hashes": {
+      "countermine/training/__init__.py": "7e9233b533b0918022ad14697c0623110ca950d8355a09e0fbe140a4176cc6cb",
+      "countermine/training/countermine_batch_sampler.py": "920df31b794e016850db4344e098834b36ff7e25b8ea3224551854c8e376e0c4",
+      "countermine/training/gsv_place_mapping.py": "be64e6c23584ef9d52ca82b88f097dbb458b8af74f731f4f444e5caa7901b21c",
+      "countermine/training/runtime_preflight.py": "64ad1d18d7b1d5d9982a580fbd425bcbfbeb5a631e8d3e29265a59da8fa40257",
+      "countermine/training/salad_datamodule.py": "e51fd0eaea6497f8db037a99b74ec86e8addc510f63d7b3b027c097a59bc88e8",
+      "countermine/training/step3a_audit.py": "defc9d86fb0dc2c7066d4ef18e3a487cecdfe3b8984e905844e602ec0a504ec0",
+      "countermine/training/step3a_config.py": "3e1c1b435ef345c565ddc61d9e31ef7a7344ec9aab6d7c5b795980c8c54eaec3",
+      "countermine/training/step3a_runtime.py": "e5b1028182d890c1b10f2700b4e11ca9d2994af3f1bf5500c554b3d02c239f24",
+      "tools/29_check_step3a_runtime.py": "6e097dae2d499998285944001da781cdb40a0aedba7edd6cbc82ec62a241077f",
+      "tools/30_prepare_step3a_training.py": "c1b1ad741a23abe959f464f9c205163346212533d606aa1f45e610b48168170d",
+      "tools/31_train_step3a.py": "3fd914cc6f6c2ddb03c0c076913f4744002ebc042ef7de11d829e7f415f013e6",
+      "tools/32_evaluate_step3a.py": "399f4227b1260d5f04d8b718f5f74b84b310d7566a5714a7d477dc556eebd438",
+      "tools/33_compare_step3a.py": "4faedd8dbd60838312d63b287a7dfece02e0a6e0daa232b3c616c70c50f0bbbf"
+    },
+    "synthetic_images_used": false
+  },
+  "scientific_snapshot_exported": false,
+  "scientific_training_executed": false,
+  "scope": {
+    "real_rgb_only": true,
+    "single_seed_pilot": true,
+    "statistical_significance_claimed": false,
+    "synthetic_images_used": false
+  },
+  "stage": "step3a_runtime_hardening_validation",
+  "stage30": {
+    "baseline_q99_geo500_exposure": 29,
+    "complete": true,
+    "exposure_gain": 407,
+    "guided_pair_count": 406,
+    "initial_state_bytes": 352035834,
+    "initial_state_sha256": "888790bb6f61d69c64cfc25c0f450a74e00cb248b4a41909a2e0b0486e7fce1f",
+    "initial_state_summary_sha256": "558521d6428cfaa50b5f082845e032d2fe3b67ee55daf056a5904372616d30f5",
+    "mapping_audit": {
+      "boston_training_places": 3283,
+      "countermine_graph_places": 2000,
+      "identity_source": "dataset.get_img_name on every metadata row",
+      "london_training_places": 5052,
+      "mapped_graph_places": 2000,
+      "one_to_one_mapping": true,
+      "per_city_training_places": {
+        "Bangkok": 3012,
+        "Barcelona": 1422,
+        "Boston": 3283,
+        "Brussels": 2328,
+        "BuenosAires": 1156,
+        "Chicago": 3593,
+        "Lisbon": 5109,
+        "London": 5052,
+        "LosAngeles": 694,
+        "Madrid": 1701,
+        "Medellin": 848,
+        "Melbourne": 3363,
+        "MexicoCity": 862,
+        "Miami": 5148,
+        "Minneapolis": 3292,
+        "OSL": 1514,
+        "Osaka": 2844,
+        "PRG": 2691,
+        "PRS": 4603,
+        "Phoenix": 3982,
+        "Rome": 2391,
+        "TRT": 2221,
+        "WashingtonDC": 1405
+      },
+      "total_training_places": 62514,
+      "unmapped_graph_places": 0
+    },
+    "preparation_device": "cpu",
+    "preparation_summary_sha256": "87a66962be95d66fcc92f3c97b78c5883a99e129b96c721593f0189a069f4329",
+    "strict_serialization_round_trip_passed": true,
+    "treatment_q99_geo500_exposure": 436,
+    "treatment_to_baseline_ratio": 15.03448275862069,
+    "unique_guided_place_count": 812,
+    "zero_invariants": {
+      "baseline": {
+        "accidentally_split_pair_count": 0,
+        "duplicate_place_count": 0,
+        "missing_place_count": 0,
+        "per_batch_city_composition_mismatch_count": 0
+      },
+      "countermine_q99_geo500": {
+        "accidentally_split_pair_count": 0,
+        "duplicate_place_count": 0,
+        "missing_place_count": 0,
+        "per_batch_city_composition_mismatch_count": 0
+      }
+    }
+  },
+  "tests": {
+    "compileall_passed": true,
+    "countermine_vpr_step3a_cpu_unittest_count": 121,
+    "countermine_vpr_step3a_cpu_unittest_passed": true,
+    "cpu_unittest_count": 364,
+    "cpu_unittest_passed": true
+  },
+  "timestamp_utc": "2026-10-02T21:14:20.453920+00:00"
+}

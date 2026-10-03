@@ -14,6 +14,7 @@ from unittest.mock import Mock, patch
 ROOT = Path(__file__).resolve().parents[1]
 TRAINING = ROOT / "countermine/training"
 CLI_NAMES = (
+    "29_check_step3a_runtime",
     "30_prepare_step3a_training", "31_train_step3a",
     "32_evaluate_step3a", "33_compare_step3a",
 )
@@ -143,7 +144,11 @@ runpy.run_path('tools/{name}.py', run_name='__main__')
                 )
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertIn("usage:", result.stdout.lower())
-                self.assertIn("--seed", result.stdout)
+                if name == "29_check_step3a_runtime":
+                    self.assertIn("--all", result.stdout)
+                    self.assertIn("--stage", result.stdout)
+                else:
+                    self.assertIn("--seed", result.stdout)
                 if name == "31_train_step3a":
                     for flag in ("--mode", "--max-epochs", "--limit-train-batches",
                                  "--limit-val-batches", "--smoke"):
@@ -168,7 +173,8 @@ runpy.run_path('tools/{name}.py', run_name='__main__')
         # The supported full-fraction argument must pass the scientific CLI gate.
         for arguments in ([], ["--limit-train-batches", "1.0", "--limit-val-batches", "1.0"]):
             dataset_check = Mock(side_effect=RuntimeError("dataset check reached"))
-            with patch.object(cli, "validate_dataset_paths", dataset_check):
+            with patch.object(cli, "validate_dataset_paths", dataset_check), patch.object(
+                    cli, "run_preflight", return_value={"runtime": {}}):
                 with self.assertRaisesRegex(RuntimeError, "dataset check reached"):
                     cli.main(["--mode", "baseline", *arguments])
             dataset_check.assert_called_once()
